@@ -22,6 +22,7 @@ add_library(boothcue-core STATIC
     Source/Song.cpp
     Source/LyricImport.cpp
     Source/Prompter.cpp
+    Source/Chords.cpp
 )
 target_include_directories(boothcue-core PUBLIC Source)
 target_link_libraries(boothcue-core PUBLIC ZLIB::ZLIB)
@@ -151,8 +152,15 @@ target_link_libraries(als-check PRIVATE boothcue-core)
 add_executable(song-check tools/SongCheck.cpp)
 target_link_libraries(song-check PRIVATE boothcue-core)
 
+# chord-check: the chord detector on the Bovenburen chord charts played as
+# synthetic MIDI (arpeggios, passing / grace notes, suspensions, a melody on
+# top, a walking bass, inversions, humanised timing). --explain prints per beat.
+add_executable(chord-check tools/ChordCheck.cpp)
+target_link_libraries(chord-check PRIVATE boothcue-core)
+
 enable_testing()
 add_test(NAME als-parser COMMAND als-check "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+add_test(NAME chord-detect COMMAND chord-check)
 add_test(NAME song-logic COMMAND song-check "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/lyrics")
 if(BOOTHCUE_BUILD_PLUGIN)
     add_test(NAME prompter-render
