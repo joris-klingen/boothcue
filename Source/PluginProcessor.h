@@ -102,6 +102,36 @@ public:
     void reloadSet();
     const LinkStatus& getLinkStatus() const noexcept                    { return linkStatus; }
 
+    // ---- tap-along (message thread) --------------------------------------------
+    struct TapSettings
+    {
+        double snapBeats = 0.0;   // 0 = off, 0.25 = 16ths, 0.5 = 8ths
+        double latencyMs = 0.0;   // subtracted from every tap while playing
+    };
+    const TapSettings& getTapSettings() const noexcept                  { return tapSettings; }
+    void setTapSettings (const TapSettings&);
+
+    // The line the next tap stamps (the editor's selection).
+    TapCursor getTapCursor() const noexcept                             { return tapCursor; }
+    void setTapCursor (int block, int line);
+
+    // Stamps the cursor's line (see tapAt) at the playhead, as of the moment
+    // of the call. Returns false, with the reason in getLastTapMessage(), when
+    // nothing was stamped.
+    bool tap();
+    juce::String getLastTapMessage() const                              { return lastTapMessage; }
+    bool wasLastTapOk() const noexcept                                  { return lastTapOk; }
+    double getLastTapTimeMs() const noexcept                            { return lastTapMs; }
+
+    void nudgeLine (int block, int line, double beats);
+    void clearLine (int block, int line);
+    void clearAllTimings();
+
+    // One step back: the last tap, nudge or clear.
+    bool canUndo() const noexcept                                       { return hasUndo; }
+    juce::String getUndoName() const                                    { return undoName; }
+    void undo();
+
     // Goes up whenever the song, the link status or the display settings
     // change, so views can tell when to repaint.
     juce::uint32 getContentVersion() const noexcept                     { return contentVersion; }
@@ -128,6 +158,8 @@ private:
     void applyState (const juce::ValueTree&);
     void setSections (std::vector<Section>);
     void updateStateSnapshot();   // song / link -> stateSnapshot
+    void timingsChanged();        // after a tap / nudge / clear / undo
+    void pushUndo (const juce::String& name);
     SharedTransport transport;
     LoopCounter loopCounter;
 
@@ -138,6 +170,15 @@ private:
 
     SetWatcher watcher;
     LinkStatus linkStatus;
+
+    TapSettings tapSettings;
+    TapCursor tapCursor;
+    juce::String lastTapMessage;
+    bool lastTapOk = false;
+    double lastTapMs = 0.0;
+    std::vector<LyricBlock> undoBlocks;
+    bool hasUndo = false;
+    juce::String undoName;
 
     // What getStateInformation writes, kept current by the message thread.
     // setStateInformation from another thread parks the tree in pendingState

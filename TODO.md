@@ -70,6 +70,26 @@ under "Done".
   lyrics, and the line being sung highlighted and scrolled into view.
   Applying edited text keeps the timing of every unchanged line (lines pair
   up by text, in order). Lyrics and their timings are saved with the set.
+- **Timing the lyrics** (step 5):
+  - *A good first guess*: untimed lines are spread over their section and
+    snapped to the song's bar grid (bars, else half bars, else quarter bars;
+    the grid follows the host's time signature), so most lines start on a
+    bar line before anything is tapped.
+  - *Tap-along*: Tap in the editor, or T / space in the singer display
+    (Backspace = undo there), stamps the marked line (the list's selection,
+    a yellow triangle) at the playhead and moves on. The playhead is taken
+    at the moment of the tap (extrapolated from the last audio block, loop
+    aware), minus a latency correction (0-200 ms), snapped to 16ths / 8ths
+    if chosen. The cursor follows the playhead into another block, and a
+    block finished in an earlier section (the 1st chorus) starts over in the
+    next. Taps that would be out of order un-time their neighbours.
+  - *Fixing*: nudge the selected line a quarter beat earlier / later, clear
+    one line or all, and one level of undo for each of those.
+  - Feedback: the last tap's result next to "Lines" in the editor, and for
+    1.5 s along the bottom of the singer display (small, for whoever taps).
+  - Core logic (`tapAt`, `positionAt`, `tapPosition`, `formatPosition`, the
+    grid spread) is plain C++, tested in `song-check`; the processor side in
+    `plugin-smoke`.
 - Tests: `ctest` runs `als-parser`, `song-logic`, `prompter-render`,
   `set-watcher` and `plugin-smoke` (the last three only with the plugin
   build; `plugin-smoke` needs a desktop session).
@@ -85,17 +105,11 @@ identity and CI. Namespace `boothcue`. The core (`AlsParser`, `Song`,
 2. ~~Display~~ — done, see "Done" above.
 3. ~~Linking the set~~ — done, see "Done" above.
 4. ~~Editor~~ — done, see "Done" above (tap controls come with step 5).
-5. **Tap-along** — a selected line in the list is the tap cursor. Tap (button
-   in the editor; `T` or space in the display window, since Live swallows most
-   keys in plugin editors) stamps the cursor line with the current PPQ via
-   `Song::stamp` and moves the cursor on. If the playhead is in a section that
-   sings another block, the cursor jumps to that block's first line. Selecting
-   a line and tapping re-times just that line; nudge buttons move it by a
-   quarter beat; "clear" returns it to the even spread.
+5. ~~Tap-along~~ — done, see "Done" above.
 6. **State** — the snapshot mechanism, the set (path + last sections) and the
    lyrics with their offsets are saved already (steps 3-4). Still to add:
-   display settings (toggles, text size, count-in), display window open /
-   bounds / full screen, and the editor size.
+   display settings (toggles, text size, count-in), tap settings (snap,
+   latency), display window open / bounds / full screen, and the editor size.
 7. **Docs and release** — `README.md`, `CLAUDE.md`, `STATUS.md`,
    `installer/install.command` (VST3 + Standalone).
 8. **Real-set check** — run `als-check --dump` and
@@ -225,6 +239,11 @@ set, detects the chords and their timing, and shows them alongside the lyrics.
    still not handled.
 
 ## Later
+
+- **Timings from the set** (a proposal, accepted per section, then tapped /
+  nudged where needed): phrase starts from a melody / topline MIDI track (a
+  note after a rest), from the starts of phrase-cut guide-vocal audio clips,
+  or from arrangement locators. Joris: "maybe later".
 
 - Snap taps to a grid (off / half beat / beat) and a tap-latency offset.
 - Section colours from the clips' Live colours.

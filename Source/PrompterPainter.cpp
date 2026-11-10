@@ -85,6 +85,15 @@ void PrompterPainter::paint (juce::Graphics& g, juce::Rectangle<int> bounds,
         area.removeFromTop (kGapUnits * 2.0f * unit);
     }
 
+    if (! s.tapNote.empty())
+    {
+        auto note = area.removeFromBottom (3.6f * unit);
+        g.setColour (s.tapNoteOk ? theme::dim : theme::loop);
+        g.setFont (font (2.6f * unit));
+        g.drawText ((s.tapNoteOk ? "tap: " : "not tapped: ") + str (s.tapNote), note,
+                    juce::Justification::centredRight, true);
+    }
+
     if (! s.hasPosition)
     {
         g.setColour (theme::dim);

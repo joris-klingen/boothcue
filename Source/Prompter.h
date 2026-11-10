@@ -54,6 +54,11 @@ struct PrompterScene
     std::string currentLine, nextLine;
     double beatsToNextLine = 0.0;
     Countdown countdown;
+
+    // Feedback for whoever taps in the display window: shown briefly along the
+    // bottom edge, small, so the singer isn't distracted. Set by the view.
+    std::string tapNote;
+    bool tapNoteOk = true;
 };
 
 PrompterScene buildScene (const Song&, const TransportState&, const DisplaySettings&);

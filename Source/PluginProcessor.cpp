@@ -52,6 +52,7 @@ BoothCueAudioProcessor::BusesProperties BoothCueAudioProcessor::createBusesPrope
 BoothCueAudioProcessor::BoothCueAudioProcessor()
     : AudioProcessor (createBusesProperties())
 {
+    song.setBarLength (TimeSig().barLength());   // until the host says otherwise
     updateStateSnapshot();
     startTimerHz (kTimerHz);
 }
@@ -140,6 +141,7 @@ void BoothCueAudioProcessor::captureTransport() noexcept
     }
 
     s.loopPass = loopCounter.update (s.valid && s.playing, s.looping, s.loopStart, s.loopEnd, s.ppq);
+    s.capturedMs = juce::Time::getMillisecondCounterHiRes();
     transport.write (s);
 }
 
@@ -190,6 +192,17 @@ void BoothCueAudioProcessor::timerCallback()
     SetWatcher::Report report;
     if (watcher.takeReport (report) && report.file == linkStatus.file)
         applyReport (report);
+
+    // Untimed lines spread on the host's bar grid.
+    if (const auto t = transport.read(); t.valid)
+    {
+        const double bar = TimeSig { t.sigNum, t.sigDen }.barLength();
+        if (std::abs (bar - song.barLength()) > 1.0e-9)
+        {
+            song.setBarLength (bar);
+            ++contentVersion;
+        }
+    }
 }
 
 void BoothCueAudioProcessor::applyReport (const SetWatcher::Report& report)
@@ -222,6 +235,120 @@ void BoothCueAudioProcessor::applyReport (const SetWatcher::Report& report)
     updateStateSnapshot();
 }
 
+// ---- tap-along (message thread) ----------------------------------------------------------
+
+void BoothCueAudioProcessor::setTapSettings (const TapSettings& s)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    tapSettings.snapBeats = juce::jlimit (0.0, 4.0, s.snapBeats);
+    tapSettings.latencyMs = juce::jlimit (0.0, 500.0, s.latencyMs);
+    ++contentVersion;
+}
+
+void BoothCueAudioProcessor::setTapCursor (int block, int line)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    if (block == tapCursor.block && line == tapCursor.line)
+        return;
+    tapCursor = TapCursor { block, line, -1 };
+    ++contentVersion;
+}
+
+void BoothCueAudioProcessor::pushUndo (const juce::String& name)
+{
+    undoBlocks = song.blocks();
+    hasUndo = true;
+    undoName = name;
+}
+
+void BoothCueAudioProcessor::timingsChanged()
+{
+    ++contentVersion;
+    updateStateSnapshot();
+}
+
+bool BoothCueAudioProcessor::tap()
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    lastTapMs = now;
+
+    const auto t = transport.read();
+    if (! t.valid)
+    {
+        lastTapOk = false;
+        lastTapMessage = "No host position: start Live's transport";
+        ++contentVersion;
+        return false;
+    }
+
+    const double ppq = tapPosition (t, now, tapSettings.latencyMs, tapSettings.snapBeats);
+    auto before = song.blocks();
+    const auto r = tapAt (song, tapCursor, ppq);
+    lastTapOk = r.ok;
+    if (! r.ok)
+    {
+        lastTapMessage = str (r.error);
+        ++contentVersion;
+        return false;
+    }
+
+    undoBlocks = std::move (before);
+    hasUndo = true;
+    undoName = "tap";
+    const auto& text = song.blocks()[static_cast<std::size_t> (r.block)].lines[static_cast<std::size_t> (r.line)].text;
+    lastTapMessage = "\"" + str (text) + "\" at "
+                     + str (formatPosition (ppq, TimeSig { t.sigNum, t.sigDen }));
+    timingsChanged();
+    return true;
+}
+
+void BoothCueAudioProcessor::nudgeLine (int block, int line, double beats)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    auto before = song.blocks();
+    if (song.nudge (block, line, beats))
+    {
+        undoBlocks = std::move (before);
+        hasUndo = true;
+        undoName = "nudge";
+        timingsChanged();
+    }
+}
+
+void BoothCueAudioProcessor::clearLine (int block, int line)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    pushUndo ("clear");
+    song.clearTiming (block, line);
+    timingsChanged();
+}
+
+void BoothCueAudioProcessor::clearAllTimings()
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    pushUndo ("clear all");
+    song.clearAllTimings();
+    tapCursor = TapCursor();
+    timingsChanged();
+}
+
+void BoothCueAudioProcessor::undo()
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    if (! hasUndo)
+        return;
+    song.setBlocks (undoBlocks);
+    hasUndo = false;
+    // Put the cursor back on the line that was undone, so it can be tapped again.
+    if (undoName == "tap" && tapCursor.line > 0)
+        --tapCursor.line;
+    lastTapMessage = "Undid the " + undoName;
+    lastTapOk = true;
+    lastTapMs = juce::Time::getMillisecondCounterHiRes();
+    timingsChanged();
+}
+
 void BoothCueAudioProcessor::setSections (std::vector<Section> sections)
 {
     song.setSections (std::move (sections));
@@ -242,6 +369,8 @@ void BoothCueAudioProcessor::setLyrics (std::vector<LyricBlock> blocks)
 {
     JUCE_ASSERT_MESSAGE_THREAD
     song.setBlocks (std::move (blocks));
+    hasUndo = false;   // an undo would bring back the old text
+    tapCursor = TapCursor();
     ++contentVersion;
     updateStateSnapshot();
 }
@@ -400,6 +529,8 @@ void BoothCueAudioProcessor::applyState (const juce::ValueTree& state)
         blocks.push_back (std::move (block));
     }
     song.setBlocks (std::move (blocks));
+    hasUndo = false;
+    tapCursor = TapCursor();
 
     // Show the saved structure at once; the watcher re-reads the file (if it
     // is there) and replaces it.

@@ -11,7 +11,10 @@ DisplayWindow::DisplayWindow (BoothCueAudioProcessor& processor)
     : DocumentWindow ("BoothCue", theme::background, DocumentWindow::allButtons, false)
 {
     setUsingNativeTitleBar (true);
-    setContentOwned (new PrompterView (processor), false);
+    auto* view = new PrompterView (processor);
+    view->onTap  = [&processor] { processor.tap(); };
+    view->onUndo = [&processor] { processor.undo(); };
+    setContentOwned (view, false);
     setResizable (true, false);
     setResizeLimits (480, 270, 16384, 16384);
     // No monitor reported (headless, or a display going away): don't centre on it.

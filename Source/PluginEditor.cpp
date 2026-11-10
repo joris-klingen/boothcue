@@ -72,15 +72,9 @@ int BoothCueAudioProcessorEditor::LineList::rowFor (int block, int line) const
     return -1;
 }
 
-juce::String BoothCueAudioProcessorEditor::LineList::position (double ppq) const
+const BoothCueAudioProcessorEditor::LineList::Row* BoothCueAudioProcessorEditor::LineList::rowAt (int index) const
 {
-    // Live's bar.beat.sixteenth, in the host's time signature.
-    const auto t = processor.getTransport();
-    const TimeSig sig { t.sigNum > 0 ? t.sigNum : 4, t.sigDen > 0 ? t.sigDen : 4 };
-    const auto bb = barBeatAt (ppq, sig);
-    const double beatStart = std::floor (ppq / sig.barLength()) * sig.barLength() + (bb.beat - 1) * sig.beatLength();
-    const int sixteenth = juce::jlimit (1, 4, 1 + static_cast<int> (std::floor ((ppq - beatStart) / (sig.beatLength() / 4.0) + 1.0e-6)));
-    return juce::String (bb.bar) + "." + juce::String (bb.beat) + "." + juce::String (sixteenth);
+    return index >= 0 && index < static_cast<int> (rows.size()) ? &rows[static_cast<std::size_t> (index)] : nullptr;
 }
 
 void BoothCueAudioProcessorEditor::LineList::paintListBoxItem (int index, juce::Graphics& g, int width, int height,
@@ -147,15 +141,30 @@ void BoothCueAudioProcessorEditor::LineList::paintListBoxItem (int index, juce::
         g.fillRect (0, 0, width, height);
     }
 
+    // The tap cursor: the line the next tap stamps.
+    const auto cursor = processor.getTapCursor();
+    auto marker = area.removeFromLeft (16);
+    if (cursor.block == row.block && cursor.line == row.line)
+    {
+        juce::Path tri;
+        const auto m = marker.toFloat().withSizeKeepingCentre (9.0f, 11.0f);
+        tri.addTriangle (m.getX(), m.getY(), m.getX(), m.getBottom(), m.getRight(), m.getCentreY());
+        g.setColour (theme::count);
+        g.fillPath (tri);
+    }
+
     const auto& line = song.blocks()[static_cast<std::size_t> (row.block)].lines[static_cast<std::size_t> (row.line)];
     const int section = song.firstSectionForBlock (row.block);
     auto posArea = area.removeFromLeft (84);
     if (section >= 0)
     {
         const double ppq = song.sections()[static_cast<std::size_t> (section)].start + song.resolvedOffset (row.block, row.line);
+        const auto t = processor.getTransport();
+        const TimeSig sig { t.sigNum > 0 ? t.sigNum : 4, t.sigDen > 0 ? t.sigDen : 4 };
         g.setFont (font (13.0f, line.timed()));
         g.setColour (line.timed() ? theme::count : theme::dim);
-        g.drawText ((line.timed() ? "" : "~ ") + position (ppq), posArea, juce::Justification::centredLeft, false);
+        g.drawText ((line.timed() ? "" : "~ ") + str (formatPosition (ppq, sig)), posArea,
+                    juce::Justification::centredLeft, false);
     }
     g.setFont (font (14.0f));
     g.setColour (sung ? theme::text : theme::text.withAlpha (0.85f));
@@ -244,6 +253,51 @@ BoothCueAudioProcessorEditor::BoothCueAudioProcessorEditor (BoothCueAudioProcess
     for (auto* b : { &loadButton, &applyButton, &revertButton })
         addAndMakeVisible (*b);
 
+    // Tap-along.
+    tapButton.onClick = [this] { processor.tap(); timerCallback(); };
+    tapButton.setTooltip ("Stamp the marked line at the playhead (T or space in the singer display)");
+    tapButton.setColour (juce::TextButton::buttonColourId, theme::count.withAlpha (0.85f));
+    tapButton.setColour (juce::TextButton::textColourOffId, theme::background);
+    undoButton.onClick = [this] { processor.undo(); };
+    earlierButton.onClick = [this] { int b, l; if (selectedLine (b, l)) processor.nudgeLine (b, l, -0.25); };
+    laterButton.onClick   = [this] { int b, l; if (selectedLine (b, l)) processor.nudgeLine (b, l, +0.25); };
+    earlierButton.setTooltip ("Move the selected line a quarter beat earlier");
+    laterButton.setTooltip ("Move the selected line a quarter beat later");
+    clearButton.onClick = [this] { int b, l; if (selectedLine (b, l)) processor.clearLine (b, l); };
+    clearButton.setTooltip ("Forget the selected line's tap: it goes back to the even spread");
+    clearAllButton.onClick = [this] { processor.clearAllTimings(); };
+    clearAllButton.setTooltip ("Forget every tap (Undo brings them back)");
+    for (auto* b : { &tapButton, &undoButton, &earlierButton, &laterButton, &clearButton, &clearAllButton })
+        addAndMakeVisible (*b);
+
+    snapBox.addItem ("No snap", 1);
+    snapBox.addItem ("16th notes", 2);
+    snapBox.addItem ("8th notes", 3);
+    snapBox.onChange = [this] { pushTapSettings(); };
+    latencySlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    latencySlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 20);
+    latencySlider.setRange (0.0, 200.0, 5.0);
+    latencySlider.setTextValueSuffix (" ms");
+    latencySlider.setTooltip ("Taps come in a little late; this much is taken off each one while playing");
+    latencySlider.onValueChange = [this] { pushTapSettings(); };
+    for (auto* l : { &snapLabel, &latencyLabel })
+    {
+        l->setColour (juce::Label::textColourId, theme::dim);
+        addAndMakeVisible (*l);
+    }
+    addAndMakeVisible (snapBox);
+    addAndMakeVisible (latencySlider);
+
+    lineModel.onSelect = [this] (int index)
+    {
+        if (syncingSelection)
+            return;
+        if (const auto* row = lineModel.rowAt (index); row != nullptr && row->kind == LineList::Row::Kind::line)
+            processor.setTapCursor (row->block, row->line);
+        else if (row != nullptr && row->kind == LineList::Row::Kind::header)
+            processor.setTapCursor (row->block, 0);
+    };
+
     lineList.setRowHeight (26);
     lineList.setColour (juce::ListBox::backgroundColourId, theme::background);
     lineList.setColour (juce::ListBox::outlineColourId, theme::faint);
@@ -252,10 +306,15 @@ BoothCueAudioProcessorEditor::BoothCueAudioProcessorEditor (BoothCueAudioProcess
 
     revertLyrics();   // the song's lyrics into the text box
     pullSettings();
+    {
+        const auto& t = processor.getTapSettings();
+        snapBox.setSelectedId (t.snapBeats >= 0.5 ? 3 : t.snapBeats >= 0.25 ? 2 : 1, juce::dontSendNotification);
+        latencySlider.setValue (t.latencyMs, juce::dontSendNotification);
+    }
 
     setResizable (true, true);
-    setResizeLimits (820, 560, 2400, 1600);
-    setSize (1000, 660);
+    setResizeLimits (860, 700, 2400, 1600);
+    setSize (1040, 720);
     startTimerHz (30);
     timerCallback();
 }
@@ -312,6 +371,56 @@ void BoothCueAudioProcessorEditor::pushSettings()
 
     entryBox.setEnabled (s.count.enabled);
     processor.setDisplaySettings (s);
+}
+
+void BoothCueAudioProcessorEditor::pushTapSettings()
+{
+    auto t = processor.getTapSettings();
+    const int id = snapBox.getSelectedId();
+    t.snapBeats = id == 3 ? 0.5 : id == 2 ? 0.25 : 0.0;
+    t.latencyMs = latencySlider.getValue();
+    processor.setTapSettings (t);
+}
+
+bool BoothCueAudioProcessorEditor::selectedLine (int& block, int& line) const
+{
+    const auto* row = lineModel.rowAt (lineList.getSelectedRow());
+    if (row == nullptr || row->kind != LineList::Row::Kind::line)
+        return false;
+    block = row->block;
+    line = row->line;
+    return true;
+}
+
+void BoothCueAudioProcessorEditor::syncSelectionToCursor()
+{
+    const auto tapCursor = processor.getTapCursor();
+    const int row = lineModel.rowFor (tapCursor.block, tapCursor.line);
+    if (row < 0 || row == lineList.getSelectedRow())
+        return;
+    const juce::ScopedValueSetter<bool> guard (syncingSelection, true);
+    lineList.selectRow (row, false, true);
+}
+
+bool BoothCueAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
+{
+    // Only when typing isn't going to the lyrics box. Live passes few keys to
+    // plugin windows; the singer display always takes T / space.
+    if (lyricsEditor.hasKeyboardFocus (true))
+        return false;
+    const auto c = key.getTextCharacter();
+    if (c == 't' || c == 'T' || key == juce::KeyPress::spaceKey)
+    {
+        processor.tap();
+        timerCallback();
+        return true;
+    }
+    if (key == juce::KeyPress::backspaceKey)
+    {
+        processor.undo();
+        return true;
+    }
+    return false;
 }
 
 // ---- set --------------------------------------------------------------------------------------
@@ -459,6 +568,16 @@ void BoothCueAudioProcessorEditor::resized()
     auto entry = left.removeFromTop (26);
     entryLabel.setBounds (entry.removeFromLeft (180));
     entryBox.setBounds (entry);
+    left.removeFromTop (6);
+
+    tapTitle = left.removeFromTop (22);
+    auto snap = left.removeFromTop (26);
+    snapLabel.setBounds (snap.removeFromLeft (100));
+    snapBox.setBounds (snap);
+    left.removeFromTop (6);
+    auto latency = left.removeFromTop (26);
+    latencyLabel.setBounds (latency.removeFromLeft (100));
+    latencySlider.setBounds (latency);
     left.removeFromTop (14);
 
     readoutArea = left;
@@ -477,6 +596,14 @@ void BoothCueAudioProcessorEditor::resized()
     area.removeFromTop (10);
     linesTitle = area.removeFromTop (24);
     area.removeFromTop (4);
+    auto taps = area.removeFromTop (32);
+    tapButton.setBounds (taps.removeFromLeft (110));
+    for (auto* b : { &undoButton, &earlierButton, &laterButton, &clearButton, &clearAllButton })
+    {
+        taps.removeFromLeft (8);
+        b->setBounds (taps.removeFromLeft (b == &clearButton || b == &clearAllButton ? 84 : 64));
+    }
+    area.removeFromTop (6);
     lineList.setBounds (area);
 }
 
@@ -500,9 +627,22 @@ void BoothCueAudioProcessorEditor::timerCallback()
 
         lineModel.rebuild();
         lineList.updateContent();
+        syncSelectionToCursor();
         lineList.repaint();
         repaint (linkArea);
+        repaint (linesTitle);
     }
+
+    int b = -1, l = -1;
+    const bool lineSelected = selectedLine (b, l);
+    const bool timed = lineSelected && processor.getSong().blocks()[static_cast<std::size_t> (b)]
+                                           .lines[static_cast<std::size_t> (l)].timed();
+    earlierButton.setEnabled (lineSelected && processor.getSong().firstSectionForBlock (b) >= 0);
+    laterButton.setEnabled (earlierButton.isEnabled());
+    clearButton.setEnabled (timed);
+    undoButton.setEnabled (processor.canUndo());
+    undoButton.setTooltip (processor.canUndo() ? "Undo the last " + processor.getUndoName() : juce::String());
+    tapButton.setEnabled (! processor.getSong().cues().empty());
 
     shown = processor.getTransport();
 
@@ -553,7 +693,19 @@ void BoothCueAudioProcessorEditor::paint (juce::Graphics& g)
             g.drawText ("not applied yet", t.withTrimmedBottom (6), juce::Justification::bottomLeft);
         }
     }
-    sectionTitle (g, linesTitle, "Lines");
+    sectionTitle (g, tapTitle, "Tap-along");
+    {
+        auto t = linesTitle;
+        sectionTitle (g, t.removeFromLeft (60), "Lines");
+        const auto message = processor.getLastTapMessage();
+        if (message.isNotEmpty())
+        {
+            g.setColour (processor.wasLastTapOk() ? theme::text : theme::loop);
+            g.setFont (font (13.0f));
+            g.drawText ((processor.wasLastTapOk() ? "" : "Not tapped: ") + message, t,
+                        juce::Justification::bottomRight, true);
+        }
+    }
 
     // The linked set.
     juce::Colour linkColour;

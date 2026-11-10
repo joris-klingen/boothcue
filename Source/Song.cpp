@@ -31,7 +31,7 @@ std::string nameKey (const std::string& s)
     return out;
 }
 
-std::vector<double> spreadOffsets (const LyricBlock& block, double length)
+std::vector<double> spreadOffsets (const LyricBlock& block, double length, double sectionStart, double barLength)
 {
     const auto n = block.lines.size();
     std::vector<double> out (n, 0.0);
@@ -63,6 +63,35 @@ std::vector<double> spreadOffsets (const LyricBlock& block, double length)
             out[k] = fromStart ? a + step * (b - a) / count
                                : a + (step + 1.0) * (b - a) / (count + 1.0);
         }
+
+        // Snap the run to the grid: the coarsest unit that keeps the lines in
+        // order, apart, and inside [a, b) (strictly after a tapped line).
+        if (barLength > kEps)
+        {
+            for (const double unit : { barLength, barLength / 2.0, barLength / 4.0 })
+            {
+                std::vector<double> snapped;
+                bool ok = true;
+                for (std::size_t k = i; k < j && ok; ++k)
+                {
+                    // A run from the section start keeps its first line ON the
+                    // start, even when the section begins off the bar.
+                    const double snap = (k == i && fromStart)
+                                            ? 0.0
+                                            : std::round ((sectionStart + out[k]) / unit) * unit - sectionStart;
+                    const bool afterPrevious = k == i ? (fromStart ? snap >= -kEps : snap > a + kEps)
+                                                      : snap > snapped.back() + kEps;
+                    ok = afterPrevious && snap < b - kEps;
+                    snapped.push_back (snap);
+                }
+                if (ok)
+                {
+                    for (std::size_t k = i; k < j; ++k)
+                        out[k] = std::max (0.0, snapped[k - i]);
+                    break;
+                }
+            }
+        }
         i = j;
     }
     return out;
@@ -81,6 +110,15 @@ void Song::setSections (std::vector<Section> s)
 void Song::setBlocks (std::vector<LyricBlock> b)
 {
     blocks_ = std::move (b);
+    rebuild();
+}
+
+void Song::setBarLength (double beats)
+{
+    beats = std::max (0.0, beats);
+    if (std::abs (beats - barLength_) < kEps)
+        return;
+    barLength_ = beats;
     rebuild();
 }
 
@@ -159,7 +197,7 @@ void Song::rebuild()
 
         const auto& block   = blocks_[static_cast<std::size_t> (b)];
         const auto  length  = sections_[i].length();
-        const auto  offsets = spreadOffsets (block, length);
+        const auto  offsets = spreadOffsets (block, length, sections_[i].start, barLength_);
 
         for (std::size_t l = 0; l < block.lines.size(); ++l)
         {
@@ -234,8 +272,8 @@ double Song::resolvedOffset (int block, int line) const
     const int section = firstSectionForBlock (block);
     if (section < 0)
         return -1.0;
-    const auto offsets = spreadOffsets (blocks_[static_cast<std::size_t> (block)],
-                                        sections_[static_cast<std::size_t> (section)].length());
+    const auto& sec = sections_[static_cast<std::size_t> (section)];
+    const auto offsets = spreadOffsets (blocks_[static_cast<std::size_t> (block)], sec.length(), sec.start, barLength_);
     return offsets[static_cast<std::size_t> (line)];
 }
 
@@ -297,6 +335,56 @@ void Song::clearAllTimings()
     rebuild();
 }
 
+// ---- tap-along -------------------------------------------------------------------
+
+TapOutcome tapAt (Song& song, TapCursor& cursor, double ppq)
+{
+    TapOutcome out;
+    const int section = song.sectionAt (ppq);
+    if (section < 0)
+    {
+        out.error = "The playhead is not in a section";
+        return out;
+    }
+    const int block = song.blockForSection (section);
+    if (block < 0)
+    {
+        out.error = "No lyrics for " + song.sections()[static_cast<std::size_t> (section)].name;
+        return out;
+    }
+    const auto lines = static_cast<int> (song.blocks()[static_cast<std::size_t> (block)].lines.size());
+    if (lines == 0)
+    {
+        out.error = "[" + song.blocks()[static_cast<std::size_t> (block)].header + "] has no lines";
+        return out;
+    }
+
+    if (cursor.block != block || cursor.line < 0 || (cursor.line >= lines && section != cursor.section))
+    {
+        cursor.block = block;
+        cursor.line = 0;
+    }
+    if (cursor.line >= lines)
+    {
+        out.error = "Every line of [" + song.blocks()[static_cast<std::size_t> (block)].header
+                    + "] is tapped: select a line to tap it again";
+        return out;
+    }
+
+    if (! song.stamp (block, cursor.line, ppq))
+    {
+        out.error = "Could not place the line here";
+        return out;
+    }
+    out.ok = true;
+    out.block = block;
+    out.line = cursor.line;
+    out.section = section;
+    cursor.section = section;
+    ++cursor.line;
+    return out;
+}
+
 // ---- bars, beats, count-in ------------------------------------------------------
 
 BarBeat barBeatAt (double ppq, TimeSig sig, bool hasLastBarStart, double lastBarStart)
@@ -311,6 +399,17 @@ BarBeat barBeatAt (double ppq, TimeSig sig, bool hasLastBarStart, double lastBar
     out.bar  = static_cast<int> (hasLastBarStart ? std::floor ((lastBarStart + kEps) / barLen + 0.5) : barIndex) + 1;
     out.beat = std::clamp (static_cast<int> (std::floor ((ppq - barStart + kEps) / beatLen)), 0, std::max (0, sig.num - 1)) + 1;
     return out;
+}
+
+std::string formatPosition (double ppq, TimeSig sig)
+{
+    const auto bb = barBeatAt (ppq, sig);
+    const double barStart  = std::floor ((ppq + kEps) / sig.barLength()) * sig.barLength();
+    const double beatStart = barStart + (bb.beat - 1) * sig.beatLength();
+    // Real 16th notes (a quarter of a quarter note): 4 per beat in x/4, 2 in x/8.
+    const int perBeat = std::max (1, static_cast<int> (std::round (sig.beatLength() / 0.25)));
+    const int sixteenth = std::clamp (1 + static_cast<int> (std::floor ((ppq - beatStart) / 0.25 + kEps)), 1, perBeat);
+    return std::to_string (bb.bar) + "." + std::to_string (bb.beat) + "." + std::to_string (sixteenth);
 }
 
 Countdown countdownAt (const Song& song, double ppq, TimeSig sig, const CountSettings& settings)

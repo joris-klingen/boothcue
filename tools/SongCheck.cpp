@@ -394,6 +394,13 @@ namespace
         // Never a beat outside the bar, whatever the host says.
         EXPECT (barBeatAt (30, sig, true, 16).beat == 4);
         EXPECT (barBeatAt (0, TimeSig { 0, 0 }).bar == 1);   // nonsense signature: treated as 4/4
+
+        EXPECT (formatPosition (0, sig) == "1.1.1");
+        EXPECT (formatPosition (57.5, sig) == "15.2.3");
+        EXPECT (formatPosition (57.74, sig) == "15.2.3");
+        EXPECT (formatPosition (57.75, sig) == "15.2.4");
+        EXPECT (formatPosition (4.25, sixEight) == "2.3.2");   // 6/8: beats are eighths, 2 sixteenths each
+        EXPECT (formatPosition (4.0, sixEight) == "2.3.1");
     }
 
     void loopTests()
@@ -536,6 +543,152 @@ namespace
         EXPECT (near (s.timelineStart, -4) && near (s.timelineEnd, 16));
         EXPECT (s.sig.num == 4 && s.sig.den == 4);
     }
+    void gridTests()
+    {
+        LyricBlock b;
+        b.lines.resize (4);
+        // 4 lines over 8 bars of 4/4: bars 1, 3, 5, 7.
+        auto o = spreadOffsets (b, 32, 0, 4);
+        EXPECT (near (o[0], 0) && near (o[1], 8) && near (o[2], 16) && near (o[3], 24));
+        // 3 lines over 8 bars: the even spread (0, 10.67, 21.33) lands on bars.
+        b.lines.resize (3);
+        o = spreadOffsets (b, 32, 0, 4);
+        EXPECT (near (o[0], 0) && near (o[1], 12) && near (o[2], 20));
+        // 5 lines over 2 bars: bars and half bars collide, quarter bars (beats) don't.
+        b.lines.resize (5);
+        o = spreadOffsets (b, 8, 0, 4);
+        EXPECT (near (o[0], 0) && near (o[1], 2) && near (o[2], 3) && near (o[3], 5) && near (o[4], 6));
+        // More lines than quarter bars: left unsnapped.
+        b.lines.resize (9);
+        o = spreadOffsets (b, 8, 0, 4);
+        EXPECT (near (o[1], 8.0 / 9.0));
+        // The grid is the song's: a section starting on beat 2 of bar 5 puts
+        // its later lines on bar lines (its first line stays on its start).
+        b.lines.resize (3);
+        o = spreadOffsets (b, 31, 17, 4);
+        EXPECT (near (o[0], 0));
+        EXPECT (near (17 + o[1], 28) && near (17 + o[2], 36));
+        // After a tapped line, strictly after it; before the next tapped line.
+        b.lines.resize (4);
+        b.lines[1].offset = 5;      // tapped just after bar 2
+        b.lines[3].offset = 20;
+        o = spreadOffsets (b, 32, 0, 4);
+        EXPECT (near (o[0], 0) && near (o[1], 5) && near (o[3], 20));
+        EXPECT (o[2] > 5 && o[2] < 20 && near (std::fmod (o[2], 4), 0));   // 12.5 -> bar 12
+        // 6/8 (a bar is 3 quarter notes).
+        LyricBlock six;
+        six.lines.resize (4);
+        o = spreadOffsets (six, 24, 0, 3);
+        EXPECT (near (o[1], 6) && near (o[2], 12) && near (o[3], 18));
+
+        // Through the Song: setting the bar length moves the cues.
+        Song s;
+        s.setSections ({ sec ("Verse", 0, 32) });
+        s.setBlocks (parseLyrics ("[Verse]\na\nb\nc\n"));
+        EXPECT (near (s.cues()[1].ppq, 32.0 / 3.0));
+        s.setBarLength (4);
+        EXPECT (near (s.barLength(), 4) && near (s.cues()[1].ppq, 12) && near (s.cues()[2].ppq, 20));
+        EXPECT (near (s.resolvedOffset (0, 1), 12));
+        s.setBarLength (0);
+        EXPECT (near (s.cues()[1].ppq, 32.0 / 3.0));
+    }
+
+    void tapCursorTests()
+    {
+        auto s = makeSong();   // Intro, Verse 1 (2 lines), Chorus (4), Verse 2 (1), Chorus, gap, Outro
+        TapCursor c;
+
+        auto r = tapAt (s, c, 5);
+        EXPECT (! r.ok && r.error.find ("Intro") != std::string::npos);
+        r = tapAt (s, c, 146);
+        EXPECT (! r.ok);   // the gap
+
+        // Verse 1: the cursor starts at its first line and moves on.
+        r = tapAt (s, c, 17);
+        EXPECT (r.ok && r.block == 1 && r.line == 0 && r.section == 1);
+        EXPECT (c.block == 1 && c.line == 1);
+        r = tapAt (s, c, 33);
+        EXPECT (r.ok && r.line == 1);
+        EXPECT (near (s.blocks()[1].lines[0].offset, 1) && near (s.blocks()[1].lines[1].offset, 17));
+        // One tap too many in the same section.
+        r = tapAt (s, c, 40);
+        EXPECT (! r.ok && c.line == 2);
+
+        // Into the chorus: the cursor follows the playhead to that block.
+        r = tapAt (s, c, 49);
+        EXPECT (r.ok && r.block == 2 && r.line == 0);
+        r = tapAt (s, c, 57);
+        EXPECT (r.ok && r.line == 1);
+
+        // Stopping halfway and picking it up in the 2nd chorus continues at line 2...
+        r = tapAt (s, c, 112 + 17);
+        EXPECT (r.ok && r.block == 2 && r.line == 2 && r.section == 4);
+        r = tapAt (s, c, 112 + 25);
+        EXPECT (r.ok && r.line == 3);
+        // ...and a chorus already finished starts over in the next one.
+        Song two;
+        two.setSections ({ sec ("Chorus", 0, 16), sec ("Chorus", 16, 32) });
+        two.setBlocks (parseLyrics ("[Chorus]\na\nb\n"));
+        TapCursor t;
+        EXPECT (tapAt (two, t, 0.5).ok && tapAt (two, t, 8.5).ok);
+        EXPECT (! tapAt (two, t, 12).ok);              // done here
+        r = tapAt (two, t, 16.25);
+        EXPECT (r.ok && r.line == 0 && r.section == 1);
+        EXPECT (near (two.blocks()[0].lines[0].offset, 0.25));
+
+        // Selecting a line re-taps just that one.
+        c = TapCursor { 2, 1, -1 };
+        r = tapAt (s, c, 48 + 7);
+        EXPECT (r.ok && r.block == 2 && r.line == 1 && near (s.blocks()[2].lines[1].offset, 7));
+
+        // A selected line of another block: the playhead's block wins.
+        c = TapCursor { 1, 0, -1 };
+        r = tapAt (s, c, 48 + 2);
+        EXPECT (r.ok && r.block == 2 && r.line == 0);
+
+        // A block with no lines.
+        Song empty;
+        empty.setSections ({ sec ("Verse", 0, 16) });
+        empty.setBlocks (parseLyrics ("[Verse]\n"));
+        TapCursor e;
+        EXPECT (! tapAt (empty, e, 1).ok);
+    }
+
+    void tapPositionTests()
+    {
+        TransportState t;
+        t.valid = true;
+        t.playing = true;
+        t.ppq = 16.0;
+        t.bpm = 120.0;          // 2 beats per second
+        t.capturedMs = 1000.0;
+
+        EXPECT (near (positionAt (t, 1000.0), 16.0));
+        EXPECT (near (positionAt (t, 1100.0), 16.2));       // 100 ms later
+        EXPECT (near (positionAt (t, 900.0), 16.0));        // never backwards
+        EXPECT (near (positionAt (t, 5000.0), 16.5));       // at most 250 ms
+        // Wraps at the end of the loop.
+        t.looping = true; t.loopStart = 8; t.loopEnd = 16.1;
+        EXPECT (near (positionAt (t, 1100.0), 8.1));
+        t.looping = false;
+        // Stopped, or no capture time: the position as it is.
+        t.playing = false;
+        EXPECT (near (positionAt (t, 1100.0), 16.0));
+        t.playing = true;
+        t.capturedMs = 0;
+        EXPECT (near (positionAt (t, 1100.0), 16.0));
+        t.capturedMs = 1000.0;
+
+        // Latency: 50 ms at 120 BPM = 0.1 beat earlier.
+        EXPECT (near (tapPosition (t, 1100.0, 50.0, 0.0), 16.1));
+        // Snap to 16ths (0.25 beat) and 8ths.
+        EXPECT (near (tapPosition (t, 1100.0, 50.0, 0.25), 16.0));
+        EXPECT (near (tapPosition (t, 1140.0, 0.0, 0.25), 16.25));
+        EXPECT (near (tapPosition (t, 1140.0, 0.0, 0.5), 16.5));
+        // No latency correction while stopped (placing a line at the playhead).
+        t.playing = false;
+        EXPECT (near (tapPosition (t, 1100.0, 50.0, 0.0), 16.0));
+    }
 }
 
 int main()
@@ -549,6 +702,9 @@ int main()
     barBeatTests();
     loopTests();
     sceneTests();
+    gridTests();
+    tapCursorTests();
+    tapPositionTests();
 
     if (failures == 0)
         std::printf ("song-check: all checks passed\n");

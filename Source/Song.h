@@ -52,6 +52,10 @@ class Song
 public:
     void setSections (std::vector<Section>);
     void setBlocks (std::vector<LyricBlock>);
+    // Bar length in beats for spreading untimed lines (they land on bars, or
+    // half / quarter bars when there are more lines than bars). 0 = no grid.
+    void setBarLength (double beats);
+    double barLength() const { return barLength_; }
 
     const std::vector<Section>&    sections() const { return sections_; }
     const std::vector<LyricBlock>& blocks()   const { return blocks_; }
@@ -87,6 +91,7 @@ private:
 
     std::vector<Section>    sections_;
     std::vector<LyricBlock> blocks_;
+    double                  barLength_ = 0.0;
     std::vector<int>        sectionBlock_;   // per section: block index or -1
     std::vector<Cue>        cues_;           // sorted by ppq
 };
@@ -94,10 +99,39 @@ private:
 // Offsets (beats from section start) for every line of a block in a section of
 // the given length: tapped lines keep their offset, the others are spread
 // evenly between their tapped neighbours / the section edges.
-std::vector<double> spreadOffsets (const LyricBlock&, double sectionLength);
+//
+// With a bar length, the spread lines are snapped to the song's bar grid
+// (counted from beat 0, so a section that starts off the bar still lands its
+// later lines on bar lines; its first line stays on the section start): bars
+// if that keeps every line apart and inside its gap, else half bars, else
+// quarter bars, else unsnapped.
+std::vector<double> spreadOffsets (const LyricBlock&, double sectionLength,
+                                   double sectionStart = 0.0, double barLength = 0.0);
 
 // "Verse 1", "verse-1" and " VERSE 1 " all give "verse1".
 std::string nameKey (const std::string&);
+
+// ---- tap-along ---------------------------------------------------------------
+
+// The line the next tap stamps. Selecting a line in the editor points it there;
+// each tap moves it on to the next line.
+struct TapCursor
+{
+    int block = -1, line = -1;
+    int section = -1;   // the section the last tap landed in (-1: none yet)
+};
+
+struct TapOutcome
+{
+    bool ok = false;
+    int block = -1, line = -1, section = -1;
+    std::string error;   // why nothing was stamped
+};
+
+// A tap at song position ppq: stamps the cursor's line, or, when the playhead
+// is in a section that sings another block, that block's first line; when the
+// block was finished in an earlier section (the 2nd chorus), it starts over.
+TapOutcome tapAt (Song&, TapCursor&, double ppq);
 
 // ---- bars, beats and the count-in ---------------------------------------------
 
@@ -117,6 +151,9 @@ struct BarBeat
 // (pass hasLastBarStart = false otherwise). The time signature is assumed
 // constant from the start of the song.
 BarBeat barBeatAt (double ppq, TimeSig, bool hasLastBarStart = false, double lastBarStart = 0.0);
+
+// Live's bar.beat.sixteenth, e.g. "13.2.3".
+std::string formatPosition (double ppq, TimeSig);
 
 struct CountSettings
 {

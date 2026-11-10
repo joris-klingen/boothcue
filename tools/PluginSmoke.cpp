@@ -204,6 +204,104 @@ namespace
         dir.deleteRecursively();
     }
 
+    // Runs one audio block with the playhead at ppq.
+    void playAt (BoothCueAudioProcessor& p, FakePlayHead& head, double ppq, bool playing = true)
+    {
+        head.info.setPpqPosition (ppq);
+        head.info.setIsPlaying (playing);
+        juce::AudioBuffer<float> buffer (2, 64);
+        juce::MidiBuffer midi;
+        p.processBlock (buffer, midi);
+    }
+
+    void tapTests (const juce::File& fixtures)
+    {
+        BoothCueAudioProcessor p;
+        p.linkSet (fixtures.getChildFile ("parts.als"));   // Intro 0-16, Verse 1 16-48, Chorus 48-80, ...
+        EXPECT (waitFor (p, State::ok));
+        p.setLyrics (parseLyrics ("[Verse 1]\none\ntwo\nthree\n[Chorus]\nhold on\nhold on again\n"));
+
+        FakePlayHead head;
+        head.info.setBpm (96.0);
+        head.info.setTimeSignature (juce::AudioPlayHead::TimeSignature { 4, 4 });
+        p.setPlayHead (&head);
+        p.prepareToPlay (48000.0, 64);
+
+        // Untimed lines sit on the bar grid: 3 lines over 8 bars -> bars 5, 8, 10.
+        pump (150);
+        EXPECT (std::abs (p.getSong().barLength() - 4.0) < 1e-9);
+        EXPECT (std::abs (p.getSong().resolvedOffset (0, 1) - 12.0) < 1e-9);
+
+        BoothCueAudioProcessor::TapSettings ts;
+        ts.snapBeats = 0.25;
+        p.setTapSettings (ts);
+
+        // Not in a section with lyrics.
+        playAt (p, head, 5.0);
+        EXPECT (! p.tap());
+        EXPECT (! p.wasLastTapOk() && p.getLastTapMessage().contains ("Intro"));
+
+        // Verse 1: lines stamped one after another.
+        playAt (p, head, 17.0);
+        EXPECT (p.tap());
+        playAt (p, head, 33.05);
+        EXPECT (p.tap());
+        const auto& verse = p.getSong().blocks()[0].lines;
+        EXPECT (std::abs (verse[0].offset - 1.0) < 1e-9);
+        EXPECT (std::abs (verse[1].offset - 17.0) < 1e-9);
+        EXPECT (p.getLastTapMessage().contains ("two") && p.getLastTapMessage().contains ("9.2.1"));
+        EXPECT (p.getTapCursor().block == 0 && p.getTapCursor().line == 2);
+
+        // Undo puts the line back and the cursor on it.
+        EXPECT (p.canUndo());
+        p.undo();
+        EXPECT (! p.getSong().blocks()[0].lines[1].timed() && p.getTapCursor().line == 1);
+        EXPECT (! p.canUndo());
+
+        // Nudge and clear, each undoable.
+        p.nudgeLine (0, 0, 0.25);
+        EXPECT (std::abs (p.getSong().blocks()[0].lines[0].offset - 1.25) < 1e-9);
+        p.undo();
+        EXPECT (std::abs (p.getSong().blocks()[0].lines[0].offset - 1.0) < 1e-9);
+        p.clearAllTimings();
+        EXPECT (! p.getSong().blocks()[0].lines[0].timed());
+        p.undo();
+        EXPECT (p.getSong().blocks()[0].lines[0].timed());
+        p.clearLine (0, 0);
+        EXPECT (! p.getSong().blocks()[0].lines[0].timed());
+
+        // Latency correction: 100 ms at 96 BPM = 0.16 beat earlier (no snap).
+        ts.snapBeats = 0.0;
+        ts.latencyMs = 100.0;
+        p.setTapSettings (ts);
+        p.setTapCursor (1, 0);
+        playAt (p, head, 50.0);
+        EXPECT (p.tap());
+        const double off = p.getSong().blocks()[1].lines[0].offset;
+        EXPECT (off > 2.0 - 0.16 - 1e-6 && off < 2.0 - 0.16 + 0.05);   // + the few ms since the block
+
+        // Stopped: placed exactly at the playhead, no latency taken off.
+        p.setTapCursor (1, 1);
+        playAt (p, head, 60.0, false);
+        EXPECT (p.tap());
+        EXPECT (std::abs (p.getSong().blocks()[1].lines[1].offset - 12.0) < 1e-9);
+
+        // The grid follows the host's time signature.
+        head.info.setTimeSignature (juce::AudioPlayHead::TimeSignature { 3, 4 });
+        playAt (p, head, 60.0, false);
+        pump (150);
+        EXPECT (std::abs (p.getSong().barLength() - 3.0) < 1e-9);
+
+        // Taps are saved.
+        juce::MemoryBlock m;
+        p.getStateInformation (m);
+        BoothCueAudioProcessor q;
+        q.setStateInformation (m.getData(), static_cast<int> (m.getSize()));
+        EXPECT (std::abs (q.getSong().blocks()[1].lines[1].offset - 12.0) < 1e-9);
+
+        p.setPlayHead (nullptr);
+    }
+
     // With BOOTHCUE_EDITOR_PNG set: a snapshot of the editor with a linked set,
     // for reviewing the layout without a host.
     void editorSnapshot (const juce::File& fixtures)
@@ -230,6 +328,8 @@ namespace
         juce::AudioBuffer<float> buffer (2, 256);
         juce::MidiBuffer midi;
         p.processBlock (buffer, midi);
+        p.setTapCursor (1, 1);
+        p.tap();
         p.setPlayHead (nullptr);
 
         std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
@@ -370,6 +470,7 @@ int main (int argc, char** argv)
     {
         const auto fixtures = juce::File::getCurrentWorkingDirectory().getChildFile (argv[1]);
         linkTests (fixtures);
+        tapTests (fixtures);
         editorSnapshot (fixtures);
     }
     else

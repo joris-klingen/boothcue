@@ -65,6 +65,7 @@ namespace
         Song song;
         TransportState transport;
         DisplaySettings settings;
+        std::string tapNote = {};
     };
 
     std::vector<Scene> scenes()
@@ -85,6 +86,8 @@ namespace
         out.push_back ({ "Chorus, looping: pass 3", song, looped, normal });
 
         out.push_back ({ "Pre-chorus, long line wraps", song, at (58.0), normal });
+        out.push_back ({ "Just tapped (note along the bottom, 1.5 s)", song, at (33.0), normal,
+                         "\"Every window glowing soft and low\" at 9.2.1" });
 
         DisplaySettings noLyrics;
         noLyrics.showLyrics = false;
@@ -108,8 +111,9 @@ namespace
         juce::Image image (juce::Image::RGB, w, h, true);
         juce::Graphics g (image);
         PrompterPainter painter;
-        painter.paint (g, { 0, 0, w, h }, buildScene (scene.song, scene.transport, scene.settings),
-                       scene.song, scene.settings);
+        auto built = buildScene (scene.song, scene.transport, scene.settings);
+        built.tapNote = scene.tapNote;
+        painter.paint (g, { 0, 0, w, h }, built, scene.song, scene.settings);
         return image;
     }
 

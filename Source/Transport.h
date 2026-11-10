@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
@@ -23,7 +24,35 @@ struct TransportState
     bool   hasLastBarStart = false;
     double lastBarStart    = 0.0;
     int    loopPass  = 0;       // 1 on the first pass through the loop; 0 = not looping
+    double capturedMs = 0.0;    // when the audio thread took this (a millisecond clock), 0 = unknown
 };
+
+// Where the playhead is at `nowMs`: the captured position moved on by the time
+// since it was taken (while playing; at most 250 ms, in case audio stalled),
+// wrapping at the end of the host loop.
+inline double positionAt (const TransportState& t, double nowMs) noexcept
+{
+    if (! t.valid || ! t.playing || t.capturedMs <= 0.0)
+        return t.ppq;
+    const double dt = std::min (std::max (nowMs - t.capturedMs, 0.0), 250.0);
+    double p = t.ppq + dt / 1000.0 * t.bpm / 60.0;
+    if (t.looping && t.loopEnd > t.loopStart && t.ppq < t.loopEnd && p >= t.loopEnd)
+        p = t.loopStart + (p - t.loopEnd);
+    return p;
+}
+
+// The song position a tap at `nowMs` stands for: the playhead then, minus the
+// tapper's latency (people tap a little late, consistently), snapped to a grid
+// of `snapBeats` (0 = no snap).
+inline double tapPosition (const TransportState& t, double nowMs, double latencyMs, double snapBeats) noexcept
+{
+    double p = positionAt (t, nowMs);
+    if (t.playing)
+        p -= latencyMs / 1000.0 * t.bpm / 60.0;
+    if (snapBeats > 0.0)
+        p = std::round (p / snapBeats) * snapBeats;
+    return p;
+}
 
 // Counts passes through the host's loop. Runs on the audio thread: arithmetic
 // only. A pass is counted when the position jumps back to the loop start while
@@ -78,6 +107,7 @@ public:
         loopEnd.store (s.loopEnd, std::memory_order_relaxed);
         lastBarStart.store (s.lastBarStart, std::memory_order_relaxed);
         loopPass.store (s.loopPass, std::memory_order_relaxed);
+        capturedMs.store (s.capturedMs, std::memory_order_relaxed);
         seq.fetch_add (1, std::memory_order_acq_rel);
     }
 
@@ -101,6 +131,7 @@ public:
             s.loopEnd      = loopEnd.load (std::memory_order_relaxed);
             s.lastBarStart = lastBarStart.load (std::memory_order_relaxed);
             s.loopPass     = loopPass.load (std::memory_order_relaxed);
+            s.capturedMs   = capturedMs.load (std::memory_order_relaxed);
             if ((before & 1u) == 0 && seq.load (std::memory_order_acquire) == before)
                 break;
         }
@@ -111,6 +142,7 @@ private:
     std::atomic<std::uint32_t> seq { 0 };
     std::atomic<std::uint32_t> flags { 0 };
     std::atomic<double> ppq { 0.0 }, bpm { 120.0 }, loopStart { 0.0 }, loopEnd { 0.0 }, lastBarStart { 0.0 };
+    std::atomic<double> capturedMs { 0.0 };
     std::atomic<int> sigNum { 4 }, sigDen { 4 }, loopPass { 0 };
 };
 

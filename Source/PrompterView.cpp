@@ -17,7 +17,8 @@ bool PrompterView::Shown::operator== (const Shown& o) const
         && section == o.section && nextSection == o.nextSection && currentCue == o.currentCue
         && nextCue == o.nextCue && countKind == o.countKind && countValue == o.countValue
         && loopPass == o.loopPass && playheadX == o.playheadX && nextSectionIn == o.nextSectionIn
-        && contentVersion == o.contentVersion && width == o.width && height == o.height;
+        && contentVersion == o.contentVersion && width == o.width && height == o.height
+        && juce::exactlyEqual (tapNoteAt, o.tapNoteAt);
 }
 
 PrompterView::PrompterView (BoothCueAudioProcessor& p) : processor (p)
@@ -44,6 +45,15 @@ void PrompterView::timerCallback()
     const auto& settings = processor.getDisplaySettings();
     scene = buildScene (processor.getSong(), processor.getTransport(), settings);
 
+    // A tap in the last 1.5 s: say what it did.
+    const double tapAt = processor.getLastTapTimeMs();
+    const bool showTap = tapAt > 0.0 && juce::Time::getMillisecondCounterHiRes() - tapAt < 1500.0;
+    if (showTap)
+    {
+        scene.tapNote = processor.getLastTapMessage().toStdString();
+        scene.tapNoteOk = processor.wasLastTapOk();
+    }
+
     Shown now;
     now.hasPosition = scene.hasPosition;
     now.playing     = scene.playing;
@@ -63,6 +73,7 @@ void PrompterView::timerCallback()
     now.nextSectionIn = scene.nextSection >= 0
                             ? static_cast<int> (std::ceil (scene.beatsToNextSection / scene.sig.beatLength())) : -1;
     now.contentVersion = processor.getContentVersion();
+    now.tapNoteAt   = showTap ? tapAt : 0.0;
     now.width       = getWidth();
     now.height      = getHeight();
 
@@ -96,6 +107,12 @@ bool PrompterView::keyPressed (const juce::KeyPress& key)
     {
         if (onTap)
             onTap();
+        return true;
+    }
+    if (key == juce::KeyPress::backspaceKey)
+    {
+        if (onUndo)
+            onUndo();
         return true;
     }
     return false;
