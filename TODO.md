@@ -1,6 +1,6 @@
 # BoothCue — plan and backlog
 
-BoothCue is a JUCE plugin (VST3 + AU, macOS first) that shows a singer, on a
+BoothCue is a JUCE plugin (VST3 only, macOS first) that shows a singer, on a
 second screen, the lyrics and where we are in the song while tracking in
 Ableton Live. This file is the plan; nothing here is built unless it is listed
 under "Done".
@@ -19,7 +19,7 @@ under "Done".
 - **Transport hand-off** — `Source/Transport.h`: `TransportState`,
   `SharedTransport` (audio thread -> message thread, lock-free), `LoopCounter`.
 - **Plugin scaffold** (step 1) — `juce_add_plugin(BoothCue)`: JUCE 8.0.15,
-  VST3 + AU (macOS) + Standalone, harmeq identity (`Joris Klingen`,
+  VST3 + Standalone (no AU), harmeq identity (`Joris Klingen`,
   `com.jorisklingen.boothcue`, `Jokl` / `Bcue`), audio effect, no parameters.
   `PluginProcessor` passes audio through untouched and, also when bypassed,
   copies the playhead into `SharedTransport` with the loop-pass count. The
@@ -27,8 +27,8 @@ under "Done".
   The core is a static library `boothcue-core`; `-DBOOTHCUE_BUILD_PLUGIN=OFF`
   builds only the core and its checks.
   Verified on Linux: builds without warnings, pluginval strictness 10 passes.
-  **Not yet verified on macOS** (AU, universal build): that is what CI's macOS
-  job does (`.github/workflows/ci.yml`: build, ctest, pluginval, auval, zip).
+  **Not yet verified on macOS** (universal build): that is what CI's macOS
+  job does (`.github/workflows/ci.yml`: build, ctest, pluginval, zip).
 - Tests: `ctest` runs `als-parser` and `song-logic`.
 
 ## v1 — still to build, in this order
@@ -80,7 +80,7 @@ identity and CI. Namespace `boothcue`. The core (`AlsParser`, `Song`,
    a flag for the message-thread timer, because hosts call both off the
    message thread (flashroll does the same).
 7. **Docs and release** — `README.md`, `CLAUDE.md`, `STATUS.md`,
-   `installer/install.command` (VST3 + AU component).
+   `installer/install.command` (VST3 + Standalone).
 8. **Real-set check** — run `als-check --dump` and
    `tools/alsmuse_crosscheck.py` on a real set of Joris's and commit a small
    real `.als` as a fixture.

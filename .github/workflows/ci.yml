@@ -22,11 +22,9 @@ jobs:
           key: deps-macos-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Configure
-        # COPY_PLUGIN installs the AU into ~/Library/Audio/Plug-Ins/Components, where auval looks.
         run: >
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
-          -DBOOTHCUE_COPY_PLUGIN=ON
 
       - name: Build
         # Makefiles: a bare --parallel means unlimited "make -j", which exhausts the runner's memory.
@@ -35,25 +33,18 @@ jobs:
       - name: Unit tests
         run: ctest --test-dir build -C Release --output-on-failure
 
-      - name: pluginval (VST3)
+      - name: pluginval
         run: |
           curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
           unzip -q pluginval.zip
           ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process \
             build/BoothCue_artefacts/Release/VST3/BoothCue.vst3
 
-      - name: auval (AU)
-        run: |
-          killall -9 AudioComponentRegistrar 2>/dev/null || true
-          auval -a | grep -i boothcue
-          auval -strict -v aufx Bcue Jokl
-
       - name: Package
         # ditto keeps the bundles' signatures inside the zip.
         run: |
           mkdir -p dist/BoothCue
           cp -R build/BoothCue_artefacts/Release/VST3/BoothCue.vst3 dist/BoothCue/
-          cp -R build/BoothCue_artefacts/Release/AU/BoothCue.component dist/BoothCue/
           cp -R build/BoothCue_artefacts/Release/Standalone/BoothCue.app dist/BoothCue/
           ditto -c -k --keepParent dist/BoothCue BoothCue-macOS.zip
 

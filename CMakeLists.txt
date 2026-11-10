@@ -37,22 +37,16 @@ if(BOOTHCUE_BUILD_PLUGIN)
     )
     FetchContent_MakeAvailable(JUCE)
 
-    # AU only exists on macOS. The Standalone runs the display without a host
-    # (no transport: it shows "no host position").
-    set(BOOTHCUE_FORMATS VST3 Standalone)
-    if(APPLE)
-        list(APPEND BOOTHCUE_FORMATS AU)
-    endif()
-
     # An audio EFFECT that passes its input through untouched, so it can sit on
     # any track (the vocal track itself, typically). It only reads the host's
-    # playhead.
+    # playhead. VST3 only (no AU); the Standalone runs the display without a
+    # host (no transport: it shows "no host position").
     juce_add_plugin(BoothCue
         COMPANY_NAME                "Joris Klingen"
         BUNDLE_ID                   "com.jorisklingen.boothcue"
         PLUGIN_MANUFACTURER_CODE    Jokl
         PLUGIN_CODE                 Bcue
-        FORMATS                     ${BOOTHCUE_FORMATS}
+        FORMATS                     VST3 Standalone
         PRODUCT_NAME                "BoothCue"
         DESCRIPTION                 "Lyrics and song position for the singer while tracking"
         IS_SYNTH                    FALSE
@@ -62,7 +56,6 @@ if(BOOTHCUE_BUILD_PLUGIN)
         EDITOR_WANTS_KEYBOARD_FOCUS FALSE
         COPY_PLUGIN_AFTER_BUILD     ${BOOTHCUE_COPY_PLUGIN}
         VST3_CATEGORIES             Fx Tools
-        AU_MAIN_TYPE                kAudioUnitType_Effect
     )
 
     target_sources(BoothCue PRIVATE
