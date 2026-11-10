@@ -33,7 +33,30 @@ namespace
         juce::AttributedString as;
         as.setJustification (juce::Justification::centred);
         as.setWordWrap (juce::AttributedString::byWord);
-        as.append (text, font (fontHeight, bold), colour);
+
+        // Words in parentheses (pickups, backing vocals, echoes) are drawn
+        // dimmer than the line itself.
+        const auto f = font (fontHeight, bold);
+        const auto aside = colour.withMultipliedAlpha (0.55f);
+        juce::String run;
+        int depth = 0;
+        for (auto p = text.getCharPointer(); ! p.isEmpty(); ++p)
+        {
+            const auto c = *p;
+            if (c == '(' && depth++ == 0 && run.isNotEmpty())
+            {
+                as.append (run, f, colour);
+                run.clear();
+            }
+            run += juce::String::charToString (c);
+            if (c == ')' && depth > 0 && --depth == 0)
+            {
+                as.append (run, f, aside);
+                run.clear();
+            }
+        }
+        if (run.isNotEmpty())
+            as.append (run, f, depth > 0 ? aside : colour);
         juce::TextLayout layout;
         layout.createLayout (as, width);
         return layout;
@@ -307,7 +330,7 @@ void PrompterPainter::paintLyrics (juce::Graphics& g, juce::Rectangle<float> are
     auto colour = counting ? theme::text : theme::dim;
     if (counting && ! resting)
     {
-        auto badge = next.removeFromLeft (12.0f * unit).withSizeKeepingCentre (10.0f * unit, 7.0f * unit);
+        auto badge = next.removeFromLeft (17.0f * unit).withSizeKeepingCentre (15.0f * unit, 7.0f * unit);
         g.setColour (theme::count);
         g.fillRoundedRectangle (badge, 1.0f * unit);
         g.setColour (theme::background);
@@ -316,7 +339,7 @@ void PrompterPainter::paintLyrics (juce::Graphics& g, juce::Rectangle<float> are
                               ? juce::String (s.countdown.value)
                               : juce::String (s.countdown.value) + (s.countdown.value == 1 ? " bar" : " bars");
         g.drawFittedText (text, badge.toNearestInt(), juce::Justification::centred, 1, 0.6f);
-        next.removeFromRight (12.0f * unit);
+        next.removeFromRight (17.0f * unit);
     }
     drawFitted (g, nextFit, str (s.nextLine), next, 2, 6.5f * unit, 3.0f * unit, counting, colour);
 }

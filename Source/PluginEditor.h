@@ -124,6 +124,8 @@ private:
     juce::TextEditor lyricsEditor;
     juce::String appliedText;       // what the editor held when last applied / loaded
     juce::String shownBlocksText;   // the song's lyrics as text, last time we looked
+    juce::String importNote;        // what the last Apply / Load noticed
+    bool importWarning = false;     // e.g. no section headers: nothing links
     LineList lineModel { processor };
     juce::ListBox lineList { "Lines", &lineModel };
 

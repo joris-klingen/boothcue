@@ -90,6 +90,21 @@ under "Done".
   - Core logic (`tapAt`, `positionAt`, `tapPosition`, `formatPosition`, the
     grid spread) is plain C++, tested in `song-check`; the processor side in
     `plugin-smoke`.
+- **Lyric import for real pasted text** — tested on Bovenburen songs from the
+  band's Google Doc (`tests/fixtures/lyrics`): headers without brackets
+  (`verse 1`, `pre`, `Refrein:`, `Brug: first line`, `Refrein x2`), Dutch /
+  short section names linking to the parts track (Refrein = Chorus, Brug =
+  Bridge, Couplet = Verse, Pre = Pre-Chorus), a bare header used before =
+  "this part again", a stanza repeating a part's opening without its header
+  gets that header (a chorus written out again), `x 2` lines, pickups
+  `(Hij is)` joined to the next line, chord-chart lines set aside (kept in
+  the import report for the chord work), a title line skipped, non-breaking
+  spaces and `()` placeholders cleaned. The editor says what the import did
+  (orange when there are no section headers, as in Parijs / Nedertown).
+  Words in parentheses are drawn dimmer on the singer display.
+  Known limit: stanzas without a header join the part above them (De langste
+  rij's first verses land in the Refrein); the line list shows it, a header
+  fixes it.
 - Tests: `ctest` runs `als-parser`, `song-logic`, `prompter-render`,
   `set-watcher` and `plugin-smoke` (the last three only with the plugin
   build; `plugin-smoke` needs a desktop session).
@@ -225,7 +240,13 @@ set, detects the chords and their timing, and shows them alongside the lyrics.
 
    Result: `ChordTrack` = sorted `{ start, end, root, quality, bass, confidence }`.
 4. **Manual chords** — detection will be wrong sometimes, and audio-only
-   songs have nothing to detect. The lyric text takes chord lines per section,
+   songs have nothing to detect. The lyric import already sets chord-chart
+   lines aside (`LyricImportReport::chordCharts`) in the band's own notation,
+   which this step should read: `Verse/Chorus: ||: Am | | |Dm E(7b13) :||`
+   (an empty bar = the chord goes on, `-` = no chord, `||: :||` repeats,
+   `(Bb)` / `(Csus4)` = alternatives, slash chords `C/G`, `Db/Ab`, labels
+   naming one or more sections). The charts in `tests/fixtures/lyrics` are
+   also ground truth for the detector once matching MIDI exists. The lyric text takes chord lines per section,
    e.g. `| Am | F | C G |`, one bar per cell, which override detection for
    that section. Stored in the plugin state like the lyrics.
 5. **Show** — `Song` gets `chordAt` / `previousChord` / `nextChord`; the

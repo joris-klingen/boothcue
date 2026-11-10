@@ -116,7 +116,7 @@ void BoothCueAudioProcessorEditor::LineList::paintListBoxItem (int index, juce::
         {
             g.setColour (theme::loop);
             g.drawText (song.sections().empty() ? juce::String ("not linked yet: link a Live set")
-                        : block.header.empty() ? juce::String ("not linked: lines before the first [header]")
+                        : block.header.empty() ? juce::String ("not linked: add a [Section] header above these lines")
                                                : "not linked: no section named \"" + str (block.header) + "\"",
                         area, juce::Justification::centredLeft, true);
         }
@@ -501,8 +501,33 @@ void BoothCueAudioProcessorEditor::loadLyricsFile()
 void BoothCueAudioProcessorEditor::applyLyrics()
 {
     const auto text = lyricsEditor.getText();
-    auto blocks = parseLyrics (text.toStdString());
+    LyricImportReport report;
+    auto blocks = parseLyrics (text.toStdString(), &report);
     keepTimings (processor.getSong().blocks(), blocks);
+
+    // Say what the import made of the text.
+    juce::StringArray notes;
+    std::size_t lines = 0;
+    for (const auto& b : blocks)
+        lines += b.lines.size();
+    importWarning = lines > 0 && ! report.anyHeader;
+    if (importWarning)
+        notes.add ("no section headers: add [Verse], [Chorus], ... above the lines so they can link");
+    if (! report.title.empty())
+        notes.add ("title \"" + str (report.title) + "\" skipped");
+    if (! report.chordCharts.empty())
+        notes.add (juce::String (report.chordCharts.size()) + " chord-chart line"
+                   + (report.chordCharts.size() == 1 ? "" : "s") + " set aside");
+    if (report.repeatMarkers > 0)
+        notes.add (juce::String (report.repeatMarkers) + " repeat marker" + (report.repeatMarkers == 1 ? "" : "s"));
+    if (report.stanzasMatched > 0)
+        notes.add (juce::String (report.stanzasMatched) + " repeated stanza" + (report.stanzasMatched == 1 ? "" : "s")
+                   + " recognised");
+    if (report.pickupsJoined > 0)
+        notes.add (juce::String (report.pickupsJoined) + " pickup" + (report.pickupsJoined == 1 ? "" : "s") + " joined");
+    if (report.linesRepeated > 0)
+        notes.add (juce::String (report.linesRepeated) + " line" + (report.linesRepeated == 1 ? "" : "s") + " from x2");
+    importNote = notes.joinIntoString (", ");
     processor.setLyrics (std::move (blocks));
     appliedText = text;
     shownBlocksText = str (lyricsToText (processor.getSong().blocks()));
@@ -686,11 +711,17 @@ void BoothCueAudioProcessorEditor::paint (juce::Graphics& g)
     {
         auto t = lyricsTitle;
         sectionTitle (g, t.removeFromLeft (80).withTrimmedBottom (6), "Lyrics");
+        t.setRight (loadButton.getX() - 10);
+        g.setFont (font (12.5f));
         if (lyricsEditor.getText() != appliedText)
         {
             g.setColour (theme::loop);
-            g.setFont (font (12.5f));
             g.drawText ("not applied yet", t.withTrimmedBottom (6), juce::Justification::bottomLeft);
+        }
+        else if (importNote.isNotEmpty())
+        {
+            g.setColour (importWarning ? theme::loop : theme::dim);
+            g.drawFittedText (importNote, t.withTrimmedBottom (4), juce::Justification::bottomLeft, 2, 0.9f);
         }
     }
     sectionTitle (g, tapTitle, "Tap-along");

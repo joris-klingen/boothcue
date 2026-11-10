@@ -10,6 +10,8 @@
 
 #include <cmath>
 #include <cstdio>
+#include <fstream>
+#include <sstream>
 #include <string>
 
 using namespace boothcue;
@@ -75,7 +77,7 @@ namespace
         EXPECT (blocks[0].lines[0].text == "stray line before any header");   // BOM and CR stripped
         EXPECT (blocks[1].header == "Verse 1" && blocks[1].lines.size() == 2);
         EXPECT (blocks[2].header == "Chorus" && blocks[2].lines.size() == 4);
-        EXPECT (blocks[3].header == "verse 2" && blocks[3].lines.size() == 1);
+        EXPECT (blocks[3].header == "Verse 2" && blocks[3].lines.size() == 1);   // headers capitalised
         EXPECT (! blocks[1].lines[0].timed());
 
         EXPECT (parseLyrics ("").empty());
@@ -689,9 +691,184 @@ namespace
         t.playing = false;
         EXPECT (near (tapPosition (t, 1100.0, 50.0, 0.0), 16.0));
     }
+    // The import rules one by one, including what must NOT trigger them.
+    void importRuleTests()
+    {
+        LyricImportReport r;
+
+        // Headers without brackets, Dutch names, colons, "x2", inline first lines.
+        auto b = parseLyrics ("verse 1\na\nRefrein:\nb\nBrug: c\nd\n[Chorus x2]\ne\n", &r);
+        EXPECT (b.size() == 4);
+        if (b.size() == 4)
+        {
+            EXPECT (b[0].header == "Verse 1" && b[1].header == "Refrein" && b[2].header == "Brug" && b[3].header == "Chorus");
+            EXPECT (b[2].lines.size() == 2 && b[2].lines[0].text == "c");
+            EXPECT (nameKey (b[1].header) == "chorus" && nameKey (b[2].header) == "bridge");
+        }
+        EXPECT (r.anyHeader && r.chordCharts.empty() && r.title.empty());
+
+        // Lyric lines that only look like headers.
+        b = parseLyrics ("Chorus girls dance all night\nIntro to the night\nSolo, so low\n");
+        EXPECT (b.size() == 1 && b[0].header.empty() && b[0].lines.size() == 3);
+
+        // A part with no lines of its own (instrumental) is kept; a part named
+        // before, on its own, is a repeat marker.
+        b = parseLyrics ("[Verse]\na\n[Solo]\n[Chorus]\nb\n\nChorus\n\n[Verse]\nc\n", &r);
+        EXPECT (b.size() == 4 && b[1].header == "Solo" && b[1].lines.empty());
+        EXPECT (r.repeatMarkers == 1);
+        // ...but a repeated header with its lines right under it is a block.
+        b = parseLyrics ("[Chorus]\na\n\n[Chorus]\na\n", &r);
+        EXPECT (b.size() == 2 && r.repeatMarkers == 0);
+
+        // Chord charts: kept aside, never sung. Pipes in a lyric are lyrics.
+        b = parseLyrics ("Verse: ||: Am | | |Dm E(7b13) :||\n|  F  |Am/E  |Esus4  |E ||\n"
+                         "(Roeren:) | Dm | C | G | Bb C ||\nZij zegt ja | hij zegt nee\n", &r);
+        EXPECT (r.chordCharts.size() == 3);
+        EXPECT (b.size() == 1 && b[0].lines.size() == 1 && b[0].lines[0].text == "Zij zegt ja | hij zegt nee");
+
+        // "x2" repeats a line; a number in the words doesn't.
+        b = parseLyrics ("[V]\nnog een keer x2\nnog eens (3x)\nmax 2 per klant\nx2\n", &r);
+        EXPECT (b.size() == 1 && b[0].lines.size() == 2 + 3 + 1 + 1);
+        EXPECT (r.linesRepeated == 3);
+        if (b.size() == 1 && b[0].lines.size() == 7)
+            EXPECT (b[0].lines[0].text == "nog een keer" && b[0].lines[2].text == "nog eens" && b[0].lines[6].text == "x2");
+
+        // Pickups: a short line in parentheses joins the line it leads into.
+        b = parseLyrics ("[V]\n(Hij is)\nBest tevreden\n(oeh oeh)\n(aah)\nlaatste regel\n(los)\n", &r);
+        EXPECT (b.size() == 1 && r.pickupsJoined == 2);
+        EXPECT (b.size() == 1 && b[0].lines.size() == 4);
+        if (b.size() == 1 && b[0].lines.size() == 4)
+        {
+            EXPECT (b[0].lines[0].text == "(Hij is) Best tevreden");
+            EXPECT (b[0].lines[1].text == "(oeh oeh)");             // the next line is in parentheses too
+            EXPECT (b[0].lines[2].text == "(aah) laatste regel");
+            EXPECT (b[0].lines[3].text == "(los)");                 // nothing to lead into
+        }
+
+        // A title: one short line set apart before the rest. Not a title: a
+        // first line that runs into a header, ends in punctuation, or is alone.
+        parseLyrics ("Muggenseizoen\n\n[Verse]\na\n", &r);
+        EXPECT (r.title == "Muggenseizoen");
+        b = parseLyrics ("Muggenseizoen\n[Verse]\na\n", &r);
+        EXPECT (r.title.empty() && b.size() == 2);
+        parseLyrics ("Heb je een plas gedaan?\n\n[Verse]\na\n", &r);
+        EXPECT (r.title.empty());
+        b = parseLyrics ("Alleen deze regel\n", &r);
+        EXPECT (r.title.empty() && b.size() == 1);
+
+        // Non-breaking spaces, "()" placeholders.
+        b = parseLyrics ("[V]\nIk\xC2\xA0moet de () bonnetjes\xC2\xA0\xC2\xA0" "bewaren\n");
+        EXPECT (b.size() == 1 && b[0].lines[0].text == "Ik moet de bonnetjes bewaren");
+    }
+
+    std::string readFile (const std::string& path)
+    {
+        std::ifstream f (path, std::ios::binary);
+        std::stringstream ss;
+        ss << f.rdbuf();
+        return ss.str();
+    }
+
+    std::size_t lineCount (const std::vector<LyricBlock>& blocks)
+    {
+        std::size_t n = 0;
+        for (const auto& b : blocks)
+            n += b.lines.size();
+        return n;
+    }
+
+    // Real lyrics pasted from the band's Google Doc (tests/fixtures/lyrics).
+    void lyricFixtureTests (const std::string& dir)
+    {
+        LyricImportReport r;
+
+        // Papa die gaat naar de club: headers without brackets, a pickup, a title.
+        auto text = readFile (dir + "/papa-die-gaat-naar-de-club.txt");
+        EXPECT (! text.empty());
+        auto b = parseLyrics (text, &r);
+        EXPECT (r.title == "Papa die gaat naar de club");
+        EXPECT (r.pickupsJoined == 1 && r.chordCharts.empty());
+        EXPECT (b.size() == 6);
+        if (b.size() == 6)
+        {
+            EXPECT (b[0].header == "Verse 1" && b[0].lines.size() == 6);
+            EXPECT (b[0].lines[3].text == "(Hij is) Best tevreden samen");
+            EXPECT (b[1].header == "Pre" && b[3].header == "Pre" && b[4].header == "Chorus");
+            EXPECT (b[5].header == "Verse 3" && b[5].lines.size() == 8);
+            EXPECT (b[5].lines[2].text == "De deuren gaan open,");   // NBSPs gone
+            EXPECT (b[2].lines[4].text == "Papa heeft plannen,");
+        }
+        // Linked to a typical parts track.
+        Song papa;
+        papa.setSections ({ sec ("Intro", 0, 16), sec ("Verse 1", 16, 48), sec ("Pre-Chorus", 48, 64),
+                            sec ("Verse 2", 64, 96), sec ("Pre-Chorus", 96, 112), sec ("Chorus", 112, 144),
+                            sec ("Verse 3", 144, 176), sec ("Chorus", 176, 208), sec ("Outro", 208, 224) });
+        papa.setBlocks (b);
+        EXPECT (papa.blockForSection (0) == -1 && papa.blockForSection (8) == -1);
+        EXPECT (papa.blockForSection (1) == 0 && papa.blockForSection (2) == 1 && papa.blockForSection (3) == 2);
+        EXPECT (papa.blockForSection (4) == 3 && papa.blockForSection (5) == 4 && papa.blockForSection (6) == 5);
+        EXPECT (papa.blockForSection (7) == 4);   // the last chorus sings the chorus again
+
+        // Dertig dagen: the chorus written out again without a header, twice.
+        b = parseLyrics (readFile (dir + "/dertig-dagen.txt"), &r);
+        EXPECT (r.stanzasMatched == 4 && r.title.empty());
+        EXPECT (b.size() == 6);
+        if (b.size() == 6)
+        {
+            EXPECT (b[0].header == "Verse" && b[2].header == "Verse" && b[4].header == "Bridge");
+            EXPECT (b[1].header == "Chorus" && b[3].header == "Chorus" && b[5].header == "Chorus");
+            EXPECT (b[2].lines.size() == 8 && b[3].lines.size() == 8 && b[4].lines.size() == 5);
+            EXPECT (b[0].lines[4].text == "Ik moet de bonnetjes bewaren,");
+        }
+        Song dertig;
+        dertig.setSections ({ sec ("Verse 1", 0, 32), sec ("Chorus 1", 32, 64), sec ("Verse 2", 64, 96),
+                              sec ("Chorus 2", 96, 128), sec ("Bridge", 128, 144), sec ("Chorus 3", 144, 176) });
+        dertig.setBlocks (b);
+        for (int i = 0; i < 6; ++i)
+            EXPECT (dertig.blockForSection (i) == i);
+
+        // De langste rij: chord charts, Refrein / Brug, repeat markers, "x 2".
+        b = parseLyrics (readFile (dir + "/de-langste-rij.txt"), &r);
+        EXPECT (r.title == "De langste rij");
+        EXPECT (r.chordCharts.size() == 5 && r.repeatMarkers == 2 && r.linesRepeated == 1);
+        EXPECT (b.size() == 3);
+        if (b.size() == 3)
+        {
+            EXPECT (b[0].header == "Refrein" && b[0].lines.size() == 16);   // the verses under it: not marked
+            EXPECT (b[1].header.empty() && b[1].lines.size() == 12);       // after "Refrein": not linked
+            EXPECT (b[2].header == "Brug" && b[2].lines.size() == 5);
+            EXPECT (b[2].lines[0].text == "Ik heb bijna niks in mijn mand\xE2\x80\xA6");
+            EXPECT (b[2].lines[3].text == b[2].lines[4].text);
+            EXPECT (b[0].lines[15].text == "Wij willen, blijven, dromen\xE2\x80\xA6");
+        }
+        Song rij;
+        rij.setSections ({ sec ("Intro", 0, 8), sec ("Chorus", 8, 24), sec ("Verse", 24, 56), sec ("Bridge", 56, 72),
+                           sec ("Chorus", 72, 88) });
+        rij.setBlocks (b);
+        EXPECT (rij.blockForSection (1) == 0 && rij.blockForSection (3) == 2 && rij.blockForSection (4) == 0);
+        EXPECT (rij.blockForSection (2) == -1);
+
+        // Parijs and Nedertown: no headers at all. Everything in one block that
+        // links nowhere, the chord charts kept aside, the titles skipped.
+        b = parseLyrics (readFile (dir + "/parijs.txt"), &r);
+        EXPECT (! r.anyHeader && r.title == "Parijs" && r.chordCharts.size() == 4);
+        EXPECT (b.size() == 1 && b[0].header.empty() && lineCount (b) == 32);
+        b = parseLyrics (readFile (dir + "/nedertown.txt"), &r);
+        EXPECT (! r.anyHeader && r.title == "Nedertown" && r.chordCharts.size() == 7);
+        EXPECT (lineCount (b) == 14);
+        EXPECT (r.chordCharts.size() == 7 && r.chordCharts[3].rfind ("(Roeren:)", 0) == 0);
+
+        // Every fixture survives the text round trip the editor does.
+        for (const char* name : { "papa-die-gaat-naar-de-club.txt", "dertig-dagen.txt", "de-langste-rij.txt" })
+        {
+            const auto first = parseLyrics (readFile (dir + "/" + name));
+            const auto again = parseLyrics (lyricsToText (first));
+            EXPECT (lyricsToText (again) == lyricsToText (first));
+        }
+    }
 }
 
-int main()
+int main (int argc, char** argv)
 {
     importTests();
     linkingTests();
@@ -705,6 +882,11 @@ int main()
     gridTests();
     tapCursorTests();
     tapPositionTests();
+    importRuleTests();
+    if (argc > 1)
+        lyricFixtureTests (argv[1]);
+    else
+        std::printf ("song-check: no lyrics dir given, skipping the lyric fixtures\n");
 
     if (failures == 0)
         std::printf ("song-check: all checks passed\n");

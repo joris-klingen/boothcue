@@ -41,7 +41,7 @@ namespace
             "Hold on, hold on\n"
             "The morning's never further than a song\n"
             "[Verse 2]\n"
-            "Paper boats are sailing down the drain\n"
+            "(And) paper boats are sailing down the drain (down the drain)\n"
             "Carrying the things we couldn't say\n"
             "[Bridge]\n"
             "Oh-oh, oh-oh\n"));
@@ -91,6 +91,7 @@ namespace
 
         DisplaySettings noLyrics;
         noLyrics.showLyrics = false;
+        out.push_back ({ "Pickups and backing in parentheses, dimmer", song, at (100.0), normal });
         out.push_back ({ "Lyrics off: structure only (players)", song, at (100.0), noLyrics });
 
         DisplaySettings big;

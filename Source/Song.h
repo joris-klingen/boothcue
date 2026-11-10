@@ -108,7 +108,9 @@ private:
 std::vector<double> spreadOffsets (const LyricBlock&, double sectionLength,
                                    double sectionStart = 0.0, double barLength = 0.0);
 
-// "Verse 1", "verse-1" and " VERSE 1 " all give "verse1".
+// "Verse 1", "verse-1" and " VERSE 1 " all give "verse1"; Dutch and short
+// section words map to one name ("Refrein" -> "chorus", "Brug 2" -> "bridge2",
+// "Pre" / "Pre-Chorus" / "Voorrefrein" -> "prechorus", "Couplet" -> "verse").
 std::string nameKey (const std::string&);
 
 // ---- tap-along ---------------------------------------------------------------

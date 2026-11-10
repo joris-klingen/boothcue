@@ -1,7 +1,10 @@
 #include "LyricImport.h"
 
 #include <algorithm>
+#include <cctype>
 #include <map>
+#include <regex>
+#include <sstream>
 
 namespace boothcue
 {
@@ -31,48 +34,387 @@ namespace
     }
 }
 
-std::vector<LyricBlock> parseLyrics (const std::string& input)
+namespace
 {
+    // Google Docs pastes non-breaking spaces; treat them as spaces.
+    std::string normaliseSpaces (std::string line)
+    {
+        for (std::size_t i = 0; (i = line.find ("\xC2\xA0", i)) != std::string::npos;)
+            line.replace (i, 2, " ");
+        for (auto& c : line)
+            if (c == '\t' || c == '\r')
+                c = ' ';
+        return line;
+    }
+
+    std::string collapseSpaces (const std::string& s)
+    {
+        std::string out;
+        for (const char c : s)
+            if (c != ' ' || (! out.empty() && out.back() != ' '))
+                out += c;
+        return trim (out);
+    }
+
+    std::string lower (std::string s)
+    {
+        for (auto& c : s)
+            c = static_cast<char> (std::tolower (static_cast<unsigned char> (c)));
+        return s;
+    }
+
+    // ---- chord charts ------------------------------------------------------------
+
+    bool isChordToken (std::string t)
+    {
+        if (t.size() >= 2 && t.front() == '(' && t.back() == ')')
+            t = t.substr (1, t.size() - 2);   // an alternative: "(Bb)", "(Csus4)"
+        static const std::regex chord (R"(^[A-G][#b]?[a-zA-Z0-9#b+()\-]*(/[A-G][#b]?)?$)");
+        return std::regex_match (t, chord);
+    }
+
+    // "Verse: ||: Am | Dm E(7b13) :||", "   |  Ab  | Cm  :||", "(Roeren:) | Dm | C ||":
+    // a bar line, and nothing after it but chords, repeat signs and "-" / "%".
+    bool isChordChart (const std::string& line)
+    {
+        const auto bar = line.find ('|');
+        if (bar == std::string::npos)
+            return false;
+        std::string rest = line.substr (bar);
+        for (auto& c : rest)
+            if (c == '|' || c == ':')
+                c = ' ';
+        std::istringstream words (rest);
+        std::string w;
+        while (words >> w)
+        {
+            const auto l = lower (w);
+            if (w == "-" || w == "%" || l == "x2" || l == "2x" || l == "(2x)" || l == "(x2)" || l == "x3" || l == "3x")
+                continue;
+            if (! isChordToken (w))
+                return false;
+        }
+        return true;
+    }
+
+    // ---- headers -------------------------------------------------------------------
+
+    struct Header
+    {
+        std::string name;      // as shown: "Verse 1", "Refrein", "Brug"
+        std::string inline_;   // text after "Header:" on the same line, if any
+    };
+
+    std::string capitalised (std::string s)
+    {
+        if (! s.empty() && s[0] >= 'a' && s[0] <= 'z')
+            s[0] = static_cast<char> (s[0] - 'a' + 'A');
+        return s;
+    }
+
+    // "[Chorus]", "[Chorus x2]", "verse 1", "Refrein:", "Refrein x2",
+    // "Brug: Ik heb bijna niks…", "*pre*", "## Bridge".
+    bool parseHeader (const std::string& line, Header& out)
+    {
+        static const std::regex repeat (R"(\s*\(?\s*(x\s*\d+|\d+\s*x)\s*\)?\s*$)", std::regex::icase);
+
+        if (line.size() >= 2 && line.front() == '[' && line.back() == ']')
+        {
+            out.name = capitalised (trim (std::regex_replace (line.substr (1, line.size() - 2), repeat, "")));
+            out.inline_.clear();
+            return true;
+        }
+
+        // Markdown / rich-text leftovers around a header word.
+        std::string t = line;
+        while (! t.empty() && (t.front() == '*' || t.front() == '_' || t.front() == '#' || t.front() == ' '))
+            t.erase (0, 1);
+        while (! t.empty() && (t.back() == '*' || t.back() == '_' || t.back() == ' '))
+            t.pop_back();
+
+        static const std::regex word (
+            R"(^(intro|verse|vers|couplet|strofe|pre[ -]?chorus|prechorus|pre|voorrefrein|chorus|refrein|refrain|)"
+            R"(bridge|brug|middle ?8|outro|slot|solo|interlude|tussenspel|instrumental|hook|tag|coda|break))"
+            R"((\s*\d+)?\s*(\(?\s*(?:x\s*\d+|\d+\s*x)\s*\)?)?\s*(:\s*(.*))?$)",
+            std::regex::icase);
+        std::smatch m;
+        if (! std::regex_match (t, m, word))
+            return false;
+        out.name = capitalised (collapseSpaces (m[1].str() + m[2].str()));
+        out.inline_ = m[5].matched ? collapseSpaces (m[5].str()) : std::string();
+        while (! out.inline_.empty() && (out.inline_.back() == '*' || out.inline_.back() == '_'))
+            out.inline_.pop_back();
+        return true;
+    }
+
+    // ---- lines -----------------------------------------------------------------------
+
+    // "meneer! x 2" -> ("meneer!", 2). Only a marker after a space counts.
+    int repeatCount (std::string& text)
+    {
+        static const std::regex marker (R"(^(.*\S)\s+\(?\s*(?:x\s*(\d)|(\d)\s*x)\s*\)?$)", std::regex::icase);
+        std::smatch m;
+        if (! std::regex_match (text, m, marker))
+            return 1;
+        const int n = std::stoi (m[2].matched ? m[2].str() : m[3].str());
+        if (n < 2 || n > 8)
+            return 1;
+        text = m[1].str();
+        return n;
+    }
+
+    bool isPickup (const std::string& line)
+    {
+        if (line.size() < 3 || line.front() != '(' || line.back() != ')')
+            return false;
+        if (line.find (')') != line.size() - 1)
+            return false;   // "(a) b (c)": more than one group
+        return std::count (line.begin(), line.end(), ' ') <= 2;   // at most 3 words
+    }
+
+    // Lowercase letters and digits only, line by line: the same stanza written
+    // again matches whatever its punctuation and capitals.
+    std::string stanzaKey (const std::vector<std::string>& lines)
+    {
+        std::string key;
+        for (const auto& l : lines)
+        {
+            for (const char c : l)
+            {
+                const auto u = static_cast<unsigned char> (c);
+                if (u >= 0x80 || std::isalnum (u))
+                    key += static_cast<char> (std::tolower (u));
+            }
+            key += '\n';
+        }
+        return key;
+    }
+
+    struct Stanza
+    {
+        std::vector<std::string> lines;
+    };
+}
+
+std::vector<LyricBlock> parseLyrics (const std::string& input, LyricImportReport* reportOut)
+{
+    LyricImportReport report;
     std::vector<LyricBlock> blocks;
+
+    // ---- pass 1: lines into headers, chord charts, stanzas -----------------------------
+    struct Item
+    {
+        enum class Kind { header, stanza, gap } kind;
+        Header header;
+        Stanza stanza;
+    };
+    std::vector<Item> items;
 
     std::size_t pos = 0;
     if (input.compare (0, 3, "\xEF\xBB\xBF") == 0)
         pos = 3;   // UTF-8 byte order mark
+
+    auto endStanza = [&items]
+    {
+        if (! items.empty() && items.back().kind == Item::Kind::stanza)
+            items.push_back ({ Item::Kind::gap, {}, {} });
+    };
+    auto addLine = [&items] (const std::string& text)
+    {
+        if (items.empty() || items.back().kind != Item::Kind::stanza)
+            items.push_back ({ Item::Kind::stanza, {}, {} });
+        items.back().stanza.lines.push_back (text);
+    };
 
     while (pos <= input.size())
     {
         auto eol = input.find ('\n', pos);
         if (eol == std::string::npos)
             eol = input.size();
-        const auto line = trim (input.substr (pos, eol - pos));
+        auto line = collapseSpaces (normaliseSpaces (input.substr (pos, eol - pos)));
         pos = eol + 1;
 
-        if (line.empty())
-            continue;
+        // Empty "()" placeholders in a line are notes to self, not lyrics.
+        for (std::size_t i; (i = line.find ("()")) != std::string::npos;)
+            line.erase (i, 2);
+        line = collapseSpaces (line);
 
-        if (line.size() >= 2 && line.front() == '[' && line.back() == ']')
+        if (line.empty())
         {
-            LyricBlock b;
-            b.header = trim (line.substr (1, line.size() - 2));
-            blocks.push_back (b);
+            endStanza();
+            if (! items.empty() && items.back().kind == Item::Kind::header)
+                items.push_back ({ Item::Kind::gap, {}, {} });
+            continue;
+        }
+        if (isChordChart (line))
+        {
+            report.chordCharts.push_back (line);
+            endStanza();
+            continue;
+        }
+        Header h;
+        if (parseHeader (line, h))
+        {
+            items.push_back ({ Item::Kind::header, h, {} });
+            if (! h.inline_.empty())
+                addLine (h.inline_);
+            continue;
+        }
+        addLine (line);
+    }
+
+    // ---- a title: a short single line opening the text, set apart by a blank line
+    //      or a chord chart (not run straight into a header), before more follows -----
+    {
+        std::size_t first = 0;
+        while (first < items.size() && items[first].kind == Item::Kind::gap)
+            ++first;
+        if (first + 1 < items.size() && items[first].kind == Item::Kind::stanza
+            && items[first].stanza.lines.size() == 1 && items[first + 1].kind == Item::Kind::gap)
+        {
+            const auto& t = items[first].stanza.lines[0];
+            const bool shortLine = std::count (t.begin(), t.end(), ' ') <= 6;
+            const bool punctuated = ! t.empty() && std::string (",.;:!?").find (t.back()) != std::string::npos;
+            const bool ellipsis = t.size() >= 3 && t.compare (t.size() - 3, 3, "\xE2\x80\xA6") == 0;
+            bool moreFollows = false;
+            for (std::size_t i = first + 1; i < items.size(); ++i)
+                moreFollows = moreFollows || items[i].kind != Item::Kind::gap;
+            if (shortLine && ! punctuated && ! ellipsis && moreFollows)
+            {
+                report.title = t;
+                items.erase (items.begin() + static_cast<std::ptrdiff_t> (first));
+            }
+        }
+    }
+
+    // ---- pass 2: stanzas into blocks --------------------------------------------------
+    // stanza text -> the header it was first sung under, and whether it opened that part
+    std::map<std::string, std::pair<std::string, bool>> stanzaHeader;
+    bool stanzaOpensBlock = false;
+    std::vector<std::string> usedKeys;
+    auto used = [&usedKeys] (const std::string& key)
+    {
+        return std::find (usedKeys.begin(), usedKeys.end(), key) != usedKeys.end();
+    };
+
+    bool havePending = false, gapAfterPending = false;
+    Header pending;
+    bool haveCurrent = false;
+
+    auto openBlock = [&] (const std::string& header)
+    {
+        LyricBlock b;
+        b.header = header;
+        blocks.push_back (b);
+        haveCurrent = true;
+        usedKeys.push_back (nameKey (header));
+    };
+    // A header that got no lines of its own.
+    auto settlePending = [&]
+    {
+        if (! havePending)
+            return;
+        havePending = false;
+        if (used (nameKey (pending.name)))
+        {
+            ++report.repeatMarkers;   // "Refrein": this part again
+            haveCurrent = false;      // what follows isn't part of it
+        }
+        else
+        {
+            openBlock (pending.name);   // e.g. an instrumental [Solo]
+        }
+    };
+
+    for (std::size_t i = 0; i < items.size(); ++i)
+    {
+        auto& item = items[i];
+        if (item.kind == Item::Kind::gap)
+        {
+            if (havePending)
+                gapAfterPending = true;
+            continue;
+        }
+        if (item.kind == Item::Kind::header)
+        {
+            settlePending();
+            report.anyHeader = true;
+            pending = item.header;
+            havePending = true;
+            gapAfterPending = false;
             continue;
         }
 
-        if (blocks.empty())
-            blocks.emplace_back();
-        LyricLine l;
-        l.text = line;
-        blocks.back().lines.push_back (l);
+        // A stanza.
+        auto lines = item.stanza.lines;
+        const auto key = stanzaKey (lines);
+
+        const auto blocksBefore = blocks.size();
+        const auto match = stanzaHeader.find (key);
+        const bool repeatsAnOpening = match != stanzaHeader.end() && ! match->second.first.empty();
+
+        if (havePending)
+        {
+            const bool marker = gapAfterPending && used (nameKey (pending.name));
+            if (marker)
+            {
+                settlePending();
+                openBlock ({});   // header-less: the editor shows it as not linked
+            }
+            else
+            {
+                havePending = false;
+                openBlock (pending.name);
+            }
+        }
+        else if (repeatsAnOpening && (match->second.second || (haveCurrent && nameKey (blocks.back().header) == nameKey (match->second.first))))
+        {
+            // The same stanza again, without a header: a repeat of the part it
+            // opened (or the next stanza of a part being repeated right now).
+            ++report.stanzasMatched;
+            if (! haveCurrent || nameKey (blocks.back().header) != nameKey (match->second.first))
+                openBlock (match->second.first);
+        }
+        else if (! haveCurrent)
+        {
+            openBlock ({});
+        }
+
+        stanzaOpensBlock = blocks.size() != blocksBefore;
+        stanzaHeader.emplace (key, std::make_pair (blocks.back().header, stanzaOpensBlock));
+
+        // Lines: join pickups, expand "x2".
+        for (std::size_t l = 0; l < lines.size(); ++l)
+        {
+            auto text = lines[l];
+            if (isPickup (text) && l + 1 < lines.size() && lines[l + 1].front() != '(')
+            {
+                text += " " + lines[++l];
+                ++report.pickupsJoined;
+            }
+            const int times = repeatCount (text);
+            report.linesRepeated += times - 1;
+            for (int n = 0; n < times; ++n)
+                blocks.back().lines.push_back ({ text, -1.0 });
+        }
     }
+    settlePending();
+
+    if (reportOut != nullptr)
+        *reportOut = report;
     return blocks;
 }
 
 std::string lyricsToText (const std::vector<LyricBlock>& blocks)
 {
     std::string out;
-    for (const auto& b : blocks)
+    for (std::size_t i = 0; i < blocks.size(); ++i)
     {
-        if (! out.empty())
+        const auto& b = blocks[i];
+        // A blank line before each header, except after an opening block
+        // without a header: a single line set apart there would read as a title.
+        const bool afterOpeningLines = i == 1 && blocks[0].header.empty();
+        if (! out.empty() && ! b.header.empty() && ! afterOpeningLines)
             out += '\n';
         if (! b.header.empty())
             out += '[' + b.header + "]\n";

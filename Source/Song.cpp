@@ -28,6 +28,23 @@ std::string nameKey (const std::string& s)
         else if (u >= 'A' && u <= 'Z')        out += static_cast<char> (u - 'A' + 'a');
         else if ((u >= 'a' && u <= 'z') || (u >= '0' && u <= '9')) out += c;
     }
+
+    // Section words that mean the same thing (Dutch / English / short forms),
+    // so a [Refrein] links to a Chorus clip. The trailing number is kept.
+    static const std::pair<const char*, const char*> aliases[] = {
+        { "refrein", "chorus" },      { "refrain", "chorus" },
+        { "brug", "bridge" },         { "middle", "bridge" },
+        { "couplet", "verse" },       { "vers", "verse" },        { "strofe", "verse" },
+        { "pre", "prechorus" },       { "voorrefrein", "prechorus" }, { "prerefrein", "prechorus" },
+        { "tussenspel", "interlude" },
+    };
+    std::size_t stem = 0;
+    while (stem < out.size() && out[stem] >= 'a' && out[stem] <= 'z')
+        ++stem;
+    const auto word = out.substr (0, stem);
+    for (const auto& [from, to] : aliases)
+        if (word == from)
+            return std::string (to) + out.substr (stem);
     return out;
 }
 

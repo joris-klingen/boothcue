@@ -153,7 +153,7 @@ target_link_libraries(song-check PRIVATE boothcue-core)
 
 enable_testing()
 add_test(NAME als-parser COMMAND als-check "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
-add_test(NAME song-logic COMMAND song-check)
+add_test(NAME song-logic COMMAND song-check "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/lyrics")
 if(BOOTHCUE_BUILD_PLUGIN)
     add_test(NAME prompter-render
              COMMAND prompter-render "${CMAKE_CURRENT_BINARY_DIR}/prompter-sheet.png")
