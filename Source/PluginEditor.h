@@ -7,10 +7,9 @@
 namespace boothcue
 {
 
-// The settings window inside Live. For now a transport readout, so a build can
-// be checked in the host: it should follow Live's position, tempo, signature,
-// play / record state and loop. TODO step 4 turns this into the real editor
-// (link set, lyrics, tap-along, display settings).
+// The settings window inside Live. For now: open / hide the singer's display,
+// the display toggles, and a transport readout to check a build in the host.
+// TODO step 4 adds linking the set, the lyrics and tap-along.
 class BoothCueAudioProcessorEditor final : public juce::AudioProcessorEditor,
                                            private juce::Timer
 {
@@ -19,12 +18,25 @@ public:
     ~BoothCueAudioProcessorEditor() override;
 
     void paint (juce::Graphics&) override;
+    void resized() override;
 
 private:
     void timerCallback() override;
+    void pushSettings();
+    void pullSettings();
 
     BoothCueAudioProcessor& processor;
     TransportState shown;
+
+    juce::TextButton displayButton;
+    juce::ToggleButton showPart   { "Song part" };
+    juce::ToggleButton showLyrics { "Lyrics" };
+    juce::ToggleButton showChords { "Chords (coming)" };
+    juce::ToggleButton showBass   { "Bass note (coming)" };
+    juce::Label  sizeLabel { {}, "Text size" };
+    juce::Slider sizeSlider;
+
+    juce::Rectangle<int> readoutArea;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BoothCueAudioProcessorEditor)
 };

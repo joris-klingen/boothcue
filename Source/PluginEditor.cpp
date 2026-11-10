@@ -1,27 +1,57 @@
 #include "PluginEditor.h"
 
 #include "Song.h"
+#include "Theme.h"
 
 namespace boothcue
 {
 
 namespace
 {
-    const juce::Colour kBackground { 0xff101214 };
-    const juce::Colour kText       { 0xffeef1f4 };
-    const juce::Colour kDim        { 0xff8a939c };
-    const juce::Colour kPlay       { 0xff3ecf6e };
-    const juce::Colour kRecord     { 0xffff4d4d };
-    const juce::Colour kLoop       { 0xfff2b640 };
-
     juce::String beats (double ppq) { return juce::String (ppq, 2); }
+
+    juce::Font font (float height, bool bold = false)
+    {
+        return juce::Font (juce::FontOptions (height, bold ? juce::Font::bold : juce::Font::plain));
+    }
 }
 
 BoothCueAudioProcessorEditor::BoothCueAudioProcessorEditor (BoothCueAudioProcessor& p)
     : AudioProcessorEditor (p), processor (p)
 {
-    setSize (480, 260);
+    displayButton.onClick = [this]
+    {
+        if (processor.isDisplayVisible())
+            processor.hideDisplay();
+        else
+            processor.showDisplay();
+        timerCallback();
+    };
+    addAndMakeVisible (displayButton);
+
+    for (auto* t : { &showPart, &showLyrics, &showChords, &showBass })
+    {
+        t->onClick = [this] { pushSettings(); };
+        addAndMakeVisible (*t);
+    }
+    // Stored and saved already; nothing draws them until chord detection lands.
+    showChords.setTooltip ("Shown once chord detection is built (see TODO.md)");
+    showBass.setTooltip ("Shown once chord detection is built (see TODO.md)");
+
+    sizeSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    sizeSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 20);
+    sizeSlider.setRange (0.5, 2.0, 0.05);
+    sizeSlider.textFromValueFunction = [] (double v) { return juce::String (juce::roundToInt (v * 100)) + "%"; };
+    sizeSlider.valueFromTextFunction = [] (const juce::String& t) { return t.getDoubleValue() / 100.0; };
+    sizeSlider.onValueChange = [this] { pushSettings(); };
+    sizeLabel.setColour (juce::Label::textColourId, theme::dim);
+    addAndMakeVisible (sizeLabel);
+    addAndMakeVisible (sizeSlider);
+
+    pullSettings();
+    setSize (520, 380);
     startTimerHz (30);
+    timerCallback();
 }
 
 BoothCueAudioProcessorEditor::~BoothCueAudioProcessorEditor()
@@ -29,73 +59,117 @@ BoothCueAudioProcessorEditor::~BoothCueAudioProcessorEditor()
     stopTimer();
 }
 
+void BoothCueAudioProcessorEditor::pullSettings()
+{
+    const auto& s = processor.getDisplaySettings();
+    showPart.setToggleState (s.showSongPart, juce::dontSendNotification);
+    showLyrics.setToggleState (s.showLyrics, juce::dontSendNotification);
+    showChords.setToggleState (s.showChords, juce::dontSendNotification);
+    showBass.setToggleState (s.showBassNote, juce::dontSendNotification);
+    sizeSlider.setValue (s.fontScale, juce::dontSendNotification);
+}
+
+void BoothCueAudioProcessorEditor::pushSettings()
+{
+    auto s = processor.getDisplaySettings();
+    s.showSongPart = showPart.getToggleState();
+    s.showLyrics   = showLyrics.getToggleState();
+    s.showChords   = showChords.getToggleState();
+    s.showBassNote = showBass.getToggleState();
+    s.fontScale    = static_cast<float> (sizeSlider.getValue());
+    processor.setDisplaySettings (s);
+}
+
+void BoothCueAudioProcessorEditor::resized()
+{
+    auto area = getLocalBounds().reduced (20);
+    area.removeFromTop (56);   // title
+
+    auto row = area.removeFromTop (32);
+    displayButton.setBounds (row.removeFromLeft (220));
+    area.removeFromTop (14);
+
+    auto toggles = area.removeFromTop (52);
+    auto left = toggles.removeFromLeft (toggles.getWidth() / 2);
+    showPart.setBounds (left.removeFromTop (26));
+    showLyrics.setBounds (left);
+    showChords.setBounds (toggles.removeFromTop (26));
+    showBass.setBounds (toggles);
+    area.removeFromTop (8);
+
+    auto size = area.removeFromTop (26);
+    sizeLabel.setBounds (size.removeFromLeft (80));
+    sizeSlider.setBounds (size);
+    area.removeFromTop (16);
+
+    readoutArea = area;
+}
+
 void BoothCueAudioProcessorEditor::timerCallback()
 {
+    displayButton.setButtonText (processor.isDisplayVisible() ? "Hide singer display" : "Open singer display");
     shown = processor.getTransport();
-    repaint();
+    repaint (readoutArea);
 }
 
 void BoothCueAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (kBackground);
+    g.fillAll (theme::background);
 
-    auto area = getLocalBounds().reduced (20);
+    auto title = getLocalBounds().reduced (20).removeFromTop (56);
+    g.setColour (theme::text);
+    g.setFont (font (24.0f, true));
+    g.drawText ("BoothCue", title.removeFromTop (30), juce::Justification::centredLeft);
+    g.setColour (theme::dim);
+    g.setFont (font (13.0f));
+    g.drawText ("v" JucePlugin_VersionString "  -  in the display: F = full screen, Esc = leave it",
+                title, juce::Justification::centredLeft);
 
-    g.setColour (kText);
-    g.setFont (juce::FontOptions (24.0f, juce::Font::bold));
-    g.drawText ("BoothCue", area.removeFromTop (32), juce::Justification::centredLeft);
-
-    g.setColour (kDim);
-    g.setFont (juce::FontOptions (13.0f));
-    g.drawText ("v" JucePlugin_VersionString " - transport check (the editor comes in a later step)",
-                area.removeFromTop (20), juce::Justification::centredLeft);
-    area.removeFromTop (16);
+    // Transport readout, to check the host connection.
+    auto area = readoutArea;
+    g.setColour (theme::faint);
+    g.drawHorizontalLine (area.getY(), (float) area.getX(), (float) area.getRight());
+    area.removeFromTop (10);
 
     if (! shown.valid)
     {
-        g.setColour (kDim);
-        g.setFont (juce::FontOptions (18.0f));
+        g.setColour (theme::dim);
+        g.setFont (font (15.0f));
         g.drawText ("No host position (start the transport, or this is the Standalone)",
-                    area, juce::Justification::topLeft);
+                    area.removeFromTop (24), juce::Justification::centredLeft);
         return;
     }
 
     const TimeSig sig { shown.sigNum, shown.sigDen };
     const auto bb = barBeatAt (shown.ppq, sig, shown.hasLastBarStart, shown.lastBarStart);
 
-    g.setColour (kText);
-    g.setFont (juce::FontOptions (44.0f, juce::Font::bold));
-    g.drawText (juce::String (bb.bar) + "." + juce::String (bb.beat),
-                area.removeFromTop (52), juce::Justification::centredLeft);
+    auto line = area.removeFromTop (34);
+    g.setColour (theme::text);
+    g.setFont (font (28.0f, true));
+    g.drawText (juce::String (bb.bar) + "." + juce::String (bb.beat), line.removeFromLeft (110),
+                juce::Justification::centredLeft);
 
-    g.setFont (juce::FontOptions (16.0f));
-    g.setColour (kDim);
-    g.drawText ("beat " + beats (shown.ppq) + "   " + juce::String (shown.bpm, 1) + " BPM   "
-                    + juce::String (shown.sigNum) + "/" + juce::String (shown.sigDen),
-                area.removeFromTop (24), juce::Justification::centredLeft);
-    area.removeFromTop (8);
-
-    auto row = area.removeFromTop (24);
-    auto tag = [&g, &row] (const juce::String& text, juce::Colour colour, bool on)
+    auto tag = [&g, &line] (const juce::String& text, juce::Colour colour, bool on)
     {
-        g.setColour (on ? colour : kDim.withAlpha (0.4f));
-        g.setFont (juce::FontOptions (16.0f, juce::Font::bold));
-        g.drawText (text, row.removeFromLeft (110), juce::Justification::centredLeft);
+        g.setColour (on ? colour : theme::dim.withAlpha (0.4f));
+        g.setFont (font (14.0f, true));
+        g.drawText (text, line.removeFromLeft (90), juce::Justification::centredLeft);
     };
-    tag (shown.playing ? "PLAYING" : "STOPPED", kPlay, shown.playing);
-    tag ("REC", kRecord, shown.recording);
-    tag (shown.looping ? "LOOP" : "LOOP OFF", kLoop, shown.looping);
+    tag (shown.playing ? "PLAYING" : "STOPPED", theme::play, shown.playing);
+    tag ("REC", theme::record, shown.recording);
+    tag (shown.looping ? "LOOP" : "LOOP OFF", theme::loop, shown.looping);
 
+    g.setFont (font (14.0f));
+    g.setColour (theme::dim);
+    auto text = "beat " + beats (shown.ppq) + "   " + juce::String (shown.bpm, 1) + " BPM   "
+                + juce::String (shown.sigNum) + "/" + juce::String (shown.sigDen);
     if (shown.loopEnd > shown.loopStart)
     {
-        area.removeFromTop (6);
-        g.setColour (shown.looping ? kLoop : kDim);
-        g.setFont (juce::FontOptions (16.0f));
-        auto text = "loop " + beats (shown.loopStart) + " - " + beats (shown.loopEnd);
+        text << "   loop " << beats (shown.loopStart) << " - " << beats (shown.loopEnd);
         if (shown.loopPass > 0)
-            text << "   pass " << shown.loopPass;
-        g.drawText (text, area.removeFromTop (24), juce::Justification::centredLeft);
+            text << "  pass " << shown.loopPass;
     }
+    g.drawText (text, area.removeFromTop (22), juce::Justification::centredLeft);
 }
 
 }  // namespace boothcue

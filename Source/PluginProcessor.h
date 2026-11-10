@@ -2,10 +2,16 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "Prompter.h"
+#include "Song.h"
 #include "Transport.h"
+
+#include <memory>
 
 namespace boothcue
 {
+
+class DisplayWindow;
 
 // BoothCue: shows the singer the lyrics and the song position while tracking.
 //
@@ -16,9 +22,10 @@ namespace boothcue
 //   * Audio thread (processBlock / processBlockBypassed) — copies the host's
 //     position into a TransportState, counts loop passes, and publishes it via
 //     SharedTransport. No allocation, no locks, no parsing, no UI.
-//   * Message thread — the editor and (later) the display window read
-//     getTransport() on their timers. Song structure, lyrics and the .als
-//     parsing live there or on a background thread, never on the audio thread.
+//   * Message thread — owns the Song, the display settings and the display
+//     window; the editor and the display read getTransport() on their timers.
+//     The .als parsing will run on a background thread (TODO step 3), never on
+//     the audio thread.
 //
 // There are no automatable parameters: everything BoothCue keeps (linked set,
 // lyrics, timings, display settings) is plugin state, saved with the Live set.
@@ -27,7 +34,7 @@ class BoothCueAudioProcessor final : public juce::AudioProcessor
 {
 public:
     BoothCueAudioProcessor();
-    ~BoothCueAudioProcessor() override = default;
+    ~BoothCueAudioProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
@@ -62,6 +69,27 @@ public:
     // The host position as of the last audio block. Any thread.
     TransportState getTransport() const noexcept                        { return transport.read(); }
 
+    // ---- message thread ------------------------------------------------------
+    const Song& getSong() const noexcept                                { return song; }
+    void setSong (Song);
+
+    const DisplaySettings& getDisplaySettings() const noexcept          { return displaySettings; }
+    void setDisplaySettings (const DisplaySettings&);
+
+    // Goes up whenever the song or the display settings change, so views can
+    // tell when to repaint.
+    juce::uint32 getContentVersion() const noexcept                     { return contentVersion; }
+
+    // The singer's display window (created on first use, then shown / hidden).
+    void showDisplay();
+    void hideDisplay();
+    bool isDisplayVisible() const;
+
+    // The name of the track BoothCue sits on, when the host tells (Live does,
+    // for VST3). Any thread.
+    juce::String getTrackName() const;
+    void updateTrackProperties (const TrackProperties&) override;
+
     static BusesProperties createBusesProperties();
 
 private:
@@ -70,6 +98,14 @@ private:
 
     SharedTransport transport;
     LoopCounter loopCounter;
+
+    Song song;
+    DisplaySettings displaySettings;
+    juce::uint32 contentVersion = 1;
+    std::unique_ptr<DisplayWindow> displayWindow;
+
+    mutable juce::SpinLock trackNameLock;
+    juce::String trackName;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BoothCueAudioProcessor)
 };

@@ -29,7 +29,26 @@ under "Done".
   Verified on Linux: builds without warnings, pluginval strictness 10 passes.
   **Not yet verified on macOS** (universal build): that is what CI's macOS
   job does (`.github/workflows/ci.yml`: build, ctest, pluginval, zip).
-- Tests: `ctest` runs `als-parser` and `song-logic`.
+- **Singer display** (step 2) — `Source/Prompter.{h,cpp}` (plain C++:
+  `DisplaySettings` with the four show toggles, `buildScene`, tested in
+  `song-check`), `PrompterPainter` (draws a scene), `PrompterView` (30 Hz,
+  repaints only when what is shown changes; `F` / double-click = full screen,
+  `Esc` leaves it, `T` / space call `onTap` for step 5) and `DisplayWindow`
+  (top-level window owned by the processor, so it survives the editor
+  closing; titled with the track name when the host gives it).
+  Shows: timeline with sections, current section, playhead and loop
+  bracket; section, "next: X in N bars", bar.beat, PLAY / REC / STOP and
+  "PASS n"; current line large and the next line grey; the count-in as
+  "2 bars", "1 bar", then a huge 4-3-2-1. Lyrics off shows the section huge
+  (for players). Chords / bass-note toggles are stored but draw nothing yet.
+  The editor has "Open singer display", the four toggles and a text-size
+  slider. Display settings are not saved yet (step 6).
+  `prompter-render` writes a PNG contact sheet of scenes;
+  `plugin-smoke` drives the real processor (pass-through, playhead, display
+  window, editor, state).
+- Tests: `ctest` runs `als-parser`, `song-logic`, `prompter-render` and
+  `plugin-smoke` (the last two only with the plugin build; `plugin-smoke`
+  needs a desktop session).
 
 ## v1 — still to build, in this order
 
@@ -39,22 +58,7 @@ identity and CI. Namespace `boothcue`. The core (`AlsParser`, `Song`,
 `LyricImport`, `Transport.h`) stays free of JUCE.
 
 1. ~~Plugin scaffold~~ — done, see "Done" above.
-2. **Display** — `PrompterView` (one paint function taking `Song`,
-   `TransportState`, `DisplaySettings`, so it can be rendered without a host)
-   and `DisplayWindow` (a `DocumentWindow` owned by the *processor*, so it
-   stays open when Live closes the plugin editor; native title bar, resizable,
-   `F` / double-click = fullscreen, `Esc` leaves it).
-   - Timeline strip: sections as blocks proportional to length, names,
-     playhead, current section highlighted, host loop range as a bracket.
-   - Header: section name, "next: Chorus in 3 bars", bar.beat, PLAY / REC,
-     "Pass 3" while looping.
-   - Centre: current line as large as fits (wraps to at most 3 lines), next
-     line smaller and grey. Count-in: bars ("2 bars", "1 bar") as a badge on
-     the next line, the last bar as a huge 4-3-2-1.
-   - Dark, high contrast, every size derived from the window height times a
-     font-scale setting.
-   - `tools/PrompterRender.cpp` (as flashroll's `staff-render`): renders a
-     contact sheet of scenes to a PNG; also a CTest.
+2. ~~Display~~ — done, see "Done" above.
 3. **Linking the set** — `SetWatcher`: a background thread that polls the
    linked file's modification time and size about once a second, re-parses
    when they have settled, and hands the `AlsResult` to the message thread.

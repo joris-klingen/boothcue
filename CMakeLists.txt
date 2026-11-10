@@ -21,6 +21,7 @@ add_library(boothcue-core STATIC
     Source/AlsParser.cpp
     Source/Song.cpp
     Source/LyricImport.cpp
+    Source/Prompter.cpp
 )
 target_include_directories(boothcue-core PUBLIC Source)
 target_link_libraries(boothcue-core PUBLIC ZLIB::ZLIB)
@@ -61,6 +62,9 @@ if(BOOTHCUE_BUILD_PLUGIN)
     target_sources(BoothCue PRIVATE
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
+        Source/PrompterPainter.cpp
+        Source/PrompterView.cpp
+        Source/DisplayWindow.cpp
     )
 
     target_include_directories(BoothCue PRIVATE Source)
@@ -83,6 +87,40 @@ if(BOOTHCUE_BUILD_PLUGIN)
             juce::juce_recommended_lto_flags
             juce::juce_recommended_warning_flags
     )
+
+    # ---- prompter-render --------------------------------------------------------
+    # Draws the singer's display for a set of scenes through the REAL
+    # PrompterPainter into a PNG (default previews/prompter-sheet.png): review
+    # the display without a host. Also the `prompter-render` CTest.
+    juce_add_console_app(prompter-render PRODUCT_NAME "prompter-render")
+    target_sources(prompter-render PRIVATE
+        tools/PrompterRender.cpp
+        Source/PrompterPainter.cpp
+    )
+    target_include_directories(prompter-render PRIVATE Source)
+    target_compile_definitions(prompter-render PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+    )
+    target_link_libraries(prompter-render PRIVATE
+        boothcue-core
+        juce::juce_gui_basics
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+    )
+
+    # ---- plugin-smoke -----------------------------------------------------------
+    # The real processor without a host: pass-through, playhead, display window,
+    # editor, state. Needs a desktop session (Linux: Xvfb + a window manager).
+    # The `plugin-smoke` CTest.
+    add_executable(plugin-smoke tools/PluginSmoke.cpp)
+    target_include_directories(plugin-smoke PRIVATE Source)
+    target_compile_definitions(plugin-smoke PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
+    target_link_libraries(plugin-smoke PRIVATE
+        BoothCue
+        juce::juce_audio_processors
+        juce::juce_gui_basics
+    )
 endif()
 
 # ---- checks ---------------------------------------------------------------------
@@ -99,3 +137,8 @@ target_link_libraries(song-check PRIVATE boothcue-core)
 enable_testing()
 add_test(NAME als-parser COMMAND als-check "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
 add_test(NAME song-logic COMMAND song-check)
+if(BOOTHCUE_BUILD_PLUGIN)
+    add_test(NAME prompter-render
+             COMMAND prompter-render "${CMAKE_CURRENT_BINARY_DIR}/prompter-sheet.png")
+    add_test(NAME plugin-smoke COMMAND plugin-smoke)
+endif()

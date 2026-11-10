@@ -4,6 +4,7 @@
 // passes, and tap / nudge editing.
 
 #include "LyricImport.h"
+#include "Prompter.h"
 #include "Song.h"
 #include "Transport.h"
 
@@ -426,6 +427,97 @@ namespace
         EXPECT (near (r.ppq, 33.25) && near (r.bpm, 96.5) && r.sigNum == 6 && r.sigDen == 8);
         EXPECT (near (r.loopStart, 16) && near (r.loopEnd, 48) && near (r.lastBarStart, 33) && r.loopPass == 3);
     }
+    TransportState at (double ppq, bool playing = true)
+    {
+        TransportState t;
+        t.valid = true;
+        t.playing = playing;
+        t.ppq = ppq;
+        return t;
+    }
+
+    void sceneTests()
+    {
+        const auto song = makeSong();
+        DisplaySettings ds;
+
+        EXPECT (describeDistance (12, TimeSig()) == "3 bars");
+        EXPECT (describeDistance (9, TimeSig()) == "3 bars");      // rounded up
+        EXPECT (describeDistance (8, TimeSig()) == "2 bars");
+        EXPECT (describeDistance (5, TimeSig()) == "2 bars");
+        EXPECT (describeDistance (4, TimeSig()) == "1 bar");
+        EXPECT (describeDistance (3.5, TimeSig()) == "4 beats");
+        EXPECT (describeDistance (1, TimeSig()) == "1 beat");
+        EXPECT (describeDistance (0.2, TimeSig()) == "1 beat");
+        EXPECT (describeDistance (1.5, TimeSig { 6, 8 }) == "3 beats");
+
+        // No host position: the song is still known (for the timeline), nothing else.
+        auto s = buildScene (song, TransportState(), ds);
+        EXPECT (! s.hasPosition && s.hasSong && s.hasLyrics);
+        EXPECT (s.section == -1 && s.currentCue == -1 && s.countdown.kind == Countdown::Kind::none);
+        EXPECT (near (s.timelineStart, 0) && near (s.timelineEnd, 168));
+
+        // Intro, 3 bars before the first line: counting in, next line known.
+        s = buildScene (song, at (4), ds);
+        EXPECT (s.hasPosition && s.playing && ! s.recording);
+        EXPECT (s.section == 0 && s.nextSection == 1 && near (s.beatsToNextSection, 12));
+        EXPECT (s.currentLine.empty() && s.nextLine == "v1 a" && near (s.beatsToNextLine, 12));
+        EXPECT (s.countdown.kind == Countdown::Kind::bars && s.countdown.value == 2);
+        EXPECT (s.barBeat.bar == 2 && s.barBeat.beat == 1);
+
+        // Mid chorus.
+        s = buildScene (song, at (57), ds);
+        EXPECT (s.section == 2 && s.currentLine == "ch b" && s.nextLine == "ch c");
+        EXPECT (s.countdown.kind == Countdown::Kind::none);
+
+        // In the gap before the Outro: no section, no line, nothing to come.
+        s = buildScene (song, at (146), ds);
+        EXPECT (s.section == -1 && s.nextSection == 5 && s.currentCue == -1 && s.nextCue == -1);
+        EXPECT (s.nextLine.empty());
+
+        // Lyrics switched off: no line, no count-in; the structure is still there.
+        ds.showLyrics = false;
+        s = buildScene (song, at (12), ds);
+        EXPECT (s.section == 0 && s.currentLine.empty() && s.nextLine.empty());
+        EXPECT (s.countdown.kind == Countdown::Kind::none);
+        ds.showLyrics = true;
+
+        // Stopped: the position is still followed (Live reports it while stopped).
+        s = buildScene (song, at (57, false), ds);
+        EXPECT (! s.playing && s.currentLine == "ch b");
+
+        // The host loop and its passes, and the time signature.
+        auto t = at (60);
+        t.looping = true; t.loopStart = 48; t.loopEnd = 80; t.loopPass = 3;
+        t.recording = true; t.sigNum = 3; t.sigDen = 4;
+        s = buildScene (song, t, ds);
+        EXPECT (s.loopShown && s.looping && s.loopPass == 3 && s.recording);
+        EXPECT (s.sig.num == 3 && s.barBeat.bar == 21);
+        t.looping = false;
+        s = buildScene (song, t, ds);
+        EXPECT (s.loopShown && ! s.looping && s.loopPass == 0);   // the range stays visible, greyed
+        t.loopEnd = t.loopStart;
+        EXPECT (! buildScene (song, t, ds).loopShown);
+
+        // No set linked, no lyrics.
+        s = buildScene (Song(), at (10), ds);
+        EXPECT (! s.hasSong && ! s.hasLyrics && s.section == -1 && s.nextLine.empty());
+
+        // A structure without lyrics.
+        Song bare;
+        bare.setSections ({ sec ("Intro", 0, 16), sec ("Verse", 16, 48) });
+        s = buildScene (bare, at (10), ds);
+        EXPECT (s.hasSong && ! s.hasLyrics && s.section == 0 && s.nextSection == 1);
+
+        // A song that starts before bar 1 widens the timeline; a nonsense signature reads as 4/4.
+        Song early;
+        early.setSections ({ sec ("Pickup", -4, 0), sec ("Verse", 0, 16) });
+        t = at (0);
+        t.sigNum = 0; t.sigDen = 0;
+        s = buildScene (early, t, ds);
+        EXPECT (near (s.timelineStart, -4) && near (s.timelineEnd, 16));
+        EXPECT (s.sig.num == 4 && s.sig.den == 4);
+    }
 }
 
 int main()
@@ -438,6 +530,7 @@ int main()
     countdownTests();
     barBeatTests();
     loopTests();
+    sceneTests();
 
     if (failures == 0)
         std::printf ("song-check: all checks passed\n");

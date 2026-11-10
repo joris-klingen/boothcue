@@ -1,4 +1,6 @@
 #include "PluginProcessor.h"
+
+#include "DisplayWindow.h"
 #include "PluginEditor.h"
 
 namespace boothcue
@@ -23,6 +25,13 @@ BoothCueAudioProcessor::BusesProperties BoothCueAudioProcessor::createBusesPrope
 BoothCueAudioProcessor::BoothCueAudioProcessor()
     : AudioProcessor (createBusesProperties())
 {
+}
+
+BoothCueAudioProcessor::~BoothCueAudioProcessor()
+{
+    // The window is a GUI object: hosts delete plugins on the message thread.
+    JUCE_ASSERT_MESSAGE_THREAD
+    displayWindow.reset();
 }
 
 void BoothCueAudioProcessor::prepareToPlay (double, int)
@@ -102,6 +111,59 @@ void BoothCueAudioProcessor::captureTransport() noexcept
 
     s.loopPass = loopCounter.update (s.valid && s.playing, s.looping, s.loopStart, s.loopEnd, s.ppq);
     transport.write (s);
+}
+
+// ---- song, settings, display (message thread) ------------------------------------------
+
+void BoothCueAudioProcessor::setSong (Song newSong)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    song = std::move (newSong);
+    ++contentVersion;
+}
+
+void BoothCueAudioProcessor::setDisplaySettings (const DisplaySettings& s)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    displaySettings = s;
+    displaySettings.fontScale = juce::jlimit (0.5f, 2.0f, s.fontScale);
+    ++contentVersion;
+}
+
+void BoothCueAudioProcessor::showDisplay()
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    if (displayWindow == nullptr)
+        displayWindow = std::make_unique<DisplayWindow> (*this);
+    displayWindow->setTrackName (getTrackName());
+    displayWindow->setVisible (true);
+    displayWindow->toFront (true);
+}
+
+void BoothCueAudioProcessor::hideDisplay()
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    if (displayWindow != nullptr)
+        displayWindow->closeButtonPressed();
+}
+
+bool BoothCueAudioProcessor::isDisplayVisible() const
+{
+    return displayWindow != nullptr && displayWindow->isVisible();
+}
+
+juce::String BoothCueAudioProcessor::getTrackName() const
+{
+    const juce::SpinLock::ScopedLockType lock (trackNameLock);
+    return trackName;
+}
+
+void BoothCueAudioProcessor::updateTrackProperties (const TrackProperties& properties)
+{
+    // Hosts may call this on any thread; the display window picks the name up
+    // on its own timer.
+    const juce::SpinLock::ScopedLockType lock (trackNameLock);
+    trackName = properties.name.value_or (juce::String());
 }
 
 // ---- editor -------------------------------------------------------------------------
