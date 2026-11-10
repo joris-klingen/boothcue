@@ -233,6 +233,40 @@ void Song::rebuild()
     std::stable_sort (cues_.begin(), cues_.end(), [] (const Cue& a, const Cue& b) { return a.ppq < b.ppq; });
 }
 
+void Song::setChords (std::vector<ChordSpan> chords, Key key)
+{
+    chords_ = std::move (chords);
+    std::stable_sort (chords_.begin(), chords_.end(), [] (const ChordSpan& a, const ChordSpan& b) { return a.start < b.start; });
+    key_ = key;
+}
+
+int Song::chordAt (double ppq) const
+{
+    const auto it = std::upper_bound (chords_.begin(), chords_.end(), ppq + kEps,
+                                      [] (double p, const ChordSpan& c) { return p < c.start; });
+    if (it == chords_.begin())
+        return -1;
+    const auto index = static_cast<int> (it - chords_.begin()) - 1;
+    return ppq < chords_[static_cast<std::size_t> (index)].end - kEps ? index : -1;
+}
+
+int Song::previousChordBefore (double ppq) const
+{
+    const auto it = std::upper_bound (chords_.begin(), chords_.end(), ppq + kEps,
+                                      [] (double p, const ChordSpan& c) { return p < c.start; });
+    const auto after = static_cast<int> (it - chords_.begin());   // chords starting after ppq
+    const int current = chordAt (ppq);
+    const int before = (current >= 0 ? current : after) - 1;
+    return before >= 0 ? before : -1;
+}
+
+int Song::nextChordAfter (double ppq) const
+{
+    const auto it = std::upper_bound (chords_.begin(), chords_.end(), ppq + kEps,
+                                      [] (double p, const ChordSpan& c) { return p < c.start; });
+    return it == chords_.end() ? -1 : static_cast<int> (it - chords_.begin());
+}
+
 int Song::sectionAt (double ppq) const
 {
     for (std::size_t i = 0; i < sections_.size(); ++i)

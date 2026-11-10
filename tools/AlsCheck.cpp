@@ -8,6 +8,7 @@
 //                                     (tools/alsmuse_crosscheck.py compares that with ALSmuse)
 
 #include "AlsParser.h"
+#include "SetChords.h"
 
 #include <cmath>
 #include <cstdio>
@@ -128,6 +129,85 @@ namespace
         EXPECT (! parseAlsFile (dir + "/does-not-exist.als").ok);
     }
 
+    bool hasNote (const AlsMidiTrack& t, double start, int pitch, double length = -1.0)
+    {
+        for (const auto& n : t.notes)
+            if (std::abs (n.start - start) < 1e-9 && n.pitch == pitch && (length < 0.0 || std::abs (n.length - length) < 1e-9))
+                return true;
+        return false;
+    }
+
+    // Notes for chord detection: every clip-timing rule (tools/make_fixtures.py, notes.als).
+    void noteTests (const std::string& dir)
+    {
+        // Without readNotes nothing changes: no tracks, stops at the parts track.
+        auto plain = parseAlsFile (dir + "/notes.als");
+        EXPECT (plain.ok && plain.midiTracks.empty() && plain.trackCount == 2);
+
+        const auto r = parseAlsFile (dir + "/notes.als", "parts", true);
+        EXPECT (r.ok && r.trackName == "Parts" && r.sections.size() == 2);
+        EXPECT (r.trackCount == 7);   // read to the end of the track list
+        EXPECT (r.midiTracks.size() == 6);   // the audio track isn't one
+        if (r.midiTracks.size() != 6)
+            return;
+        const auto& keys = r.midiTracks[2];
+        EXPECT (keys.name == "Keys" && keys.index == 2 && ! keys.muted && ! keys.drums);
+
+        // A: plain clip, the deactivated note left out.
+        EXPECT (hasNote (keys, 0, 60, 4) && hasNote (keys, 0, 67, 4) && hasNote (keys, 4, 57, 4));
+        EXPECT (! hasNote (keys, 2, 61));
+        // B: a 4-beat loop played twice.
+        EXPECT (hasNote (keys, 8, 65, 2) && hasNote (keys, 10, 67, 2) && hasNote (keys, 12, 65, 2) && hasNote (keys, 14, 74, 2));
+        EXPECT (! hasNote (keys, 16, 65));
+        // C: start marker at 2, end marker at 8.
+        EXPECT (! hasNote (keys, 14, 40) && ! hasNote (keys, 16, 40));
+        EXPECT (hasNote (keys, 16, 41, 4) && hasNote (keys, 20, 42, 2));   // cut at the end marker (content 8)
+        bool after = false;
+        for (const auto& n : keys.notes)
+            after = after || n.pitch == 43;
+        EXPECT (! after);
+        // D: deactivated clip.
+        for (const auto& n : keys.notes)
+            EXPECT (n.start < 24.0 - 1e-9 || n.start >= 32.0 - 1e-9);
+        // E: loop 2-6, start marker 3, clip 32-40.
+        EXPECT (hasNote (keys, 32, 49, 0.5) && hasNote (keys, 34, 50, 0.5));
+        EXPECT (hasNote (keys, 35, 48) && hasNote (keys, 36, 49) && hasNote (keys, 38, 50) && hasNote (keys, 39, 48));
+        int inE = 0;
+        for (const auto& n : keys.notes)
+            inE += n.start >= 32.0 - 1e-9 ? 1 : 0;
+        EXPECT (inE == 6);
+        // Sorted by start.
+        for (std::size_t i = 1; i < keys.notes.size(); ++i)
+            EXPECT (keys.notes[i - 1].start <= keys.notes[i].start);
+
+        EXPECT (r.midiTracks[3].name == "Bass" && r.midiTracks[3].notes.size() == 6);
+        EXPECT (r.midiTracks[4].drums && r.midiTracks[4].notes.size() == 16);
+        EXPECT (r.midiTracks[5].muted && r.midiTracks[5].notes.size() == 3);
+        EXPECT (r.midiTracks[1].name == "Parts" && r.midiTracks[1].notes.empty());
+        EXPECT (r.midiTracks[3].notes[0].velocity == 100);
+
+        // With notes, the structure is the same as without.
+        EXPECT (plain.sections.size() == r.sections.size());
+
+        // Chords from the set: Keys + Bass; the drums, the muted track and the
+        // parts / length tracks are left out.
+        const auto chords = chordsFromSet (r, 4.0);
+        EXPECT (chords.anyNotes);
+        EXPECT (chords.chordTracks == std::vector<std::string> { "Keys" });
+        EXPECT (chords.bassTracks == std::vector<std::string> { "Bass" });
+        auto at = [&chords] (double t)
+        {
+            for (const auto& sp : chords.result.spans)
+                if (t >= sp.start && t < sp.end)
+                    return chordName (sp.chord, chords.result.key);
+            return std::string ("-");
+        };
+        EXPECT (at (1) == "C" && at (5) == "Am" && at (9) == "F" && at (11) == "G" && at (13) == "F" && at (15) == "G");
+        if (at (1) != "C" || at (5) != "Am" || at (9) != "F" || at (11) != "G")
+            std::printf ("chords: %s %s %s %s\n", at (1).c_str(), at (5).c_str(), at (9).c_str(), at (11).c_str());
+        EXPECT (! chordsFromSet (plain).anyNotes);   // read without notes: nothing to detect
+    }
+
     void xmlTests()
     {
         const char* head = "<Ableton><LiveSet><Tracks><MidiTrack><Name><UserName Value='x'/></Name></MidiTrack>"
@@ -193,6 +273,7 @@ int main (int argc, char** argv)
     }
 
     fixtureTests (argv[1]);
+    noteTests (argv[1]);
     xmlTests();
 
     if (failures == 0)

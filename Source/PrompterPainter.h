@@ -41,6 +41,9 @@ private:
     void paintTimeline (juce::Graphics&, juce::Rectangle<float>, float unit, const PrompterScene&, const Song&);
     void paintLyrics (juce::Graphics&, juce::Rectangle<float>, float unit, const PrompterScene&);
     void paintStructureOnly (juce::Graphics&, juce::Rectangle<float>, float unit, const PrompterScene&, const Song&);
+    // Previous (small, dim) - current (large, bass note under it) - next (with
+    // "in 2 beats"). `big`: chords are the main thing on screen (lyrics off).
+    void paintChords (juce::Graphics&, juce::Rectangle<float>, float unit, const PrompterScene&, bool big);
 
     Fit currentFit, nextFit, sectionFit;
 };

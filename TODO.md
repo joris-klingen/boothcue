@@ -113,7 +113,24 @@ under "Done".
   connected comes back on a screen that is (JUCE's window restore). An older
   state without these parts gives the defaults. Full screen restore is not
   testable under Xvfb; check it on the Mac.
-- Tests: `ctest` runs `als-parser`, `song-logic`, `prompter-render`,
+- **Chords** — `Source/Chords.{h,cpp}` (detector, plain C++), `SetChords`
+  (a parsed set -> detector input), notes read from the set's MIDI clips in
+  `AlsParser` (loops unrolled, start / end markers, deactivated clips and
+  notes skipped, muted tracks and Drum Racks marked). Track roles from the
+  name (bass / vocal-melody / drums-helpers ignored) or from the notes
+  (polyphony, register, steps vs leaps). Embellishment filtering on note
+  starts with tolerance; passing notes decided in two passes against the
+  chord; suspensions that resolve while the chord holds; ring-on up to the
+  bar line; bass as a prior; key estimate and spelling; Viterbi smoothing.
+  `chord-check` plays the Bovenburen charts as synthetic MIDI (block,
+  arpeggio, passing / grace notes, walking bass, slash chords, melody on
+  top, suspensions; also humanised): 90-100% per beat. Detection runs on
+  the watcher thread after each save; the display shows previous / current
+  / next chord with "in N beats", the bass note on its own (toggle), and a
+  "?" on unsure chords; lyrics off = chords fill the screen (keys / guitar).
+  The editor says which tracks the chords and bass come from and the key.
+  Detected chords are saved with the set. **Not yet checked on a real set.**
+- Tests: `ctest` runs `als-parser`, `chord-detect`, `song-logic`, `prompter-render`,
   `set-watcher` and `plugin-smoke` (the last three only with the plugin
   build; `plugin-smoke` needs a desktop session).
 
@@ -143,7 +160,13 @@ identity and CI. Namespace `boothcue`. The core (`AlsParser`, `Song`,
 v1; the last two are wired when chords land (below). With lyrics off and chords
 on, the same window serves a keyboard or guitar player.
 
-## Next: chords (previous / current / next)
+## Chords (previous / current / next)
+
+Status: detection, reading notes from the set, the display and saving are
+built (see "Done"); still open below: choosing the source tracks in the
+editor (chord step 2 is by track name only so far), manual chords (step 4),
+transpose / capo, and a check on real sets.
+
 
 Goal: the display also shows the previous, current and next chord, so it works
 for keyboard and guitar tracking. Ideally BoothCue reads the MIDI in the linked

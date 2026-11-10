@@ -21,6 +21,16 @@ namespace boothcue
 //   clips   : <track>/DeviceChain/MainSequencer/ClipTimeable/ArrangerAutomation/Events/MidiClip
 //   start   : MidiClip@Time        end : MidiClip/CurrentEnd@Value
 //   name    : MidiClip/Name@Value
+// and, with readNotes, per MIDI track:
+//   notes   : MidiClip/Notes/KeyTracks/KeyTrack/{Notes/MidiNoteEvent@Time,Duration,
+//             Velocity,IsEnabled ; MidiKey@Value}   (times in clip content beats)
+//   timing  : MidiClip/Loop/{LoopStart,LoopEnd,StartRelative,LoopOn}: playback
+//             starts at the start marker (LoopStart + StartRelative); a looped
+//             clip repeats [LoopStart, LoopEnd) until CurrentEnd, an unlooped one
+//             stops at LoopEnd (its end marker)
+//   skipped : MidiClip/Disabled true (deactivated clip), IsEnabled false notes
+//   track   : DeviceChain/Mixer/Speaker/Manual false = muted; a DrumGroupDevice
+//             anywhere in it = drums
 // All times are in beats (quarter notes), the same unit as the host's PPQ.
 
 struct AlsSection
@@ -28,6 +38,25 @@ struct AlsSection
     std::string name;
     double start = 0.0;   // beats
     double end   = 0.0;   // beats
+};
+
+// A MIDI note placed in the arrangement (clip loops unrolled, start marker
+// and end applied).
+struct AlsNote
+{
+    double start = 0.0, length = 0.0;   // beats
+    int pitch = 60;
+    int velocity = 100;
+};
+
+// A MIDI track's arrangement notes, for chord detection.
+struct AlsMidiTrack
+{
+    std::string name;
+    int index = -1;        // position in the set
+    bool muted = false;    // the track's Speaker (activator) is off
+    bool drums = false;    // a Drum Rack is on it
+    std::vector<AlsNote> notes;   // sorted by start
 };
 
 struct AlsResult
@@ -40,15 +69,19 @@ struct AlsResult
     int  trackIndex   = -1;             // 0-based position in the set
     bool usedFallback = false;          // true: no track with the wanted name, took the 2nd track
     int  trackCount   = 0;              // tracks seen before scanning stopped
+
+    // With readNotes: every MIDI track with its notes (the whole track list is
+    // read then, not only up to the structure track).
+    std::vector<AlsMidiTrack> midiTracks;
 };
 
 // Parses the set at `path`. The structure track is the first MIDI track whose
 // name equals `trackName` (case-insensitive, trimmed); if there is none, the
 // 2nd track of the set is used. A file that isn't gzipped is read as plain XML.
-AlsResult parseAlsFile (const std::string& path, const std::string& trackName = "parts");
+AlsResult parseAlsFile (const std::string& path, const std::string& trackName = "parts", bool readNotes = false);
 
 // The same, from XML that is already in memory (tests).
-AlsResult parseAlsXml (const std::string& xml, const std::string& trackName = "parts");
+AlsResult parseAlsXml (const std::string& xml, const std::string& trackName = "parts", bool readNotes = false);
 
 // ---- streaming XML scanner --------------------------------------------------
 // Just enough XML for Live sets: elements and attributes. Text, comments,

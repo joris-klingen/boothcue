@@ -40,16 +40,15 @@
   <Loop>
     <LoopStart Value="0" />
     <LoopEnd Value="248" />
+    <StartRelative Value="0" />
     <LoopOn Value="false" />
   </Loop>
   <Name Value="length" />
   <Color Value="0" />
+  <Disabled Value="false" />
   <Notes>
     <KeyTracks>
-      <KeyTrack Id="0">
-        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
-        <MidiKey Value="60" />
-      </KeyTrack>
+      <KeyTrack Id="0"><Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" OffVelocity="64" NoteId="1" IsEnabled="true" /></Notes><MidiKey Value="60" /></KeyTrack>
     </KeyTracks>
   </Notes>
 </MidiClip>
@@ -85,16 +84,15 @@
   <Loop>
     <LoopStart Value="0" />
     <LoopEnd Value="16" />
+    <StartRelative Value="0" />
     <LoopOn Value="false" />
   </Loop>
   <Name Value="LaneDecoy" />
   <Color Value="91" />
+  <Disabled Value="false" />
   <Notes>
     <KeyTracks>
-      <KeyTrack Id="0">
-        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
-        <MidiKey Value="60" />
-      </KeyTrack>
+      <KeyTrack Id="0"><Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" OffVelocity="64" NoteId="1" IsEnabled="true" /></Notes><MidiKey Value="60" /></KeyTrack>
     </KeyTracks>
   </Notes>
 </MidiClip></Events></ClipAutomation>
@@ -115,16 +113,15 @@
   <Loop>
     <LoopStart Value="0" />
     <LoopEnd Value="16" />
+    <StartRelative Value="0" />
     <LoopOn Value="false" />
   </Loop>
   <Name Value="SessionDecoy" />
   <Color Value="90" />
+  <Disabled Value="false" />
   <Notes>
     <KeyTracks>
-      <KeyTrack Id="0">
-        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
-        <MidiKey Value="60" />
-      </KeyTrack>
+      <KeyTrack Id="0"><Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" OffVelocity="64" NoteId="1" IsEnabled="true" /></Notes><MidiKey Value="60" /></KeyTrack>
     </KeyTracks>
   </Notes>
 </MidiClip></Value></ClipSlot></ClipSlot>
@@ -139,16 +136,15 @@
   <Loop>
     <LoopStart Value="0" />
     <LoopEnd Value="32.0" />
+    <StartRelative Value="0" />
     <LoopOn Value="false" />
   </Loop>
   <Name Value="Verse 2" />
   <Color Value="3" />
+  <Disabled Value="false" />
   <Notes>
     <KeyTracks>
-      <KeyTrack Id="0">
-        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
-        <MidiKey Value="60" />
-      </KeyTrack>
+      <KeyTrack Id="0"><Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" OffVelocity="64" NoteId="1" IsEnabled="true" /></Notes><MidiKey Value="60" /></KeyTrack>
     </KeyTracks>
   </Notes>
 </MidiClip><MidiClip Id="4" Time="112.0">
@@ -158,16 +154,15 @@
   <Loop>
     <LoopStart Value="0" />
     <LoopEnd Value="32.0" />
+    <StartRelative Value="0" />
     <LoopOn Value="false" />
   </Loop>
   <Name Value="Chorus" />
   <Color Value="4" />
+  <Disabled Value="false" />
   <Notes>
     <KeyTracks>
-      <KeyTrack Id="0">
-        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
-        <MidiKey Value="60" />
-      </KeyTrack>
+      <KeyTrack Id="0"><Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" OffVelocity="64" NoteId="1" IsEnabled="true" /></Notes><MidiKey Value="60" /></KeyTrack>
     </KeyTracks>
   </Notes>
 </MidiClip><MidiClip Id="5" Time="144.0">
@@ -177,16 +172,15 @@
   <Loop>
     <LoopStart Value="0" />
     <LoopEnd Value="18.0" />
+    <StartRelative Value="0" />
     <LoopOn Value="false" />
   </Loop>
   <Name Value="Bridge &amp; &quot;Solo&quot;" />
   <Color Value="5" />
+  <Disabled Value="false" />
   <Notes>
     <KeyTracks>
-      <KeyTrack Id="0">
-        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
-        <MidiKey Value="60" />
-      </KeyTrack>
+      <KeyTrack Id="0"><Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" OffVelocity="64" NoteId="1" IsEnabled="true" /></Notes><MidiKey Value="60" /></KeyTrack>
     </KeyTracks>
   </Notes>
 </MidiClip><MidiClip Id="6" Time="162.0">
@@ -196,16 +190,15 @@
   <Loop>
     <LoopStart Value="0" />
     <LoopEnd Value="64.0" />
+    <StartRelative Value="0" />
     <LoopOn Value="false" />
   </Loop>
   <Name Value="Chorus" />
   <Color Value="6" />
+  <Disabled Value="false" />
   <Notes>
     <KeyTracks>
-      <KeyTrack Id="0">
-        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
-        <MidiKey Value="60" />
-      </KeyTrack>
+      <KeyTrack Id="0"><Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" OffVelocity="64" NoteId="1" IsEnabled="true" /></Notes><MidiKey Value="60" /></KeyTrack>
     </KeyTracks>
   </Notes>
 </MidiClip><MidiClip Id="7" Time="234.0">
@@ -215,16 +208,15 @@
   <Loop>
     <LoopStart Value="0" />
     <LoopEnd Value="16.0" />
+    <StartRelative Value="0" />
     <LoopOn Value="false" />
   </Loop>
   <Name Value="Outro" />
   <Color Value="7" />
+  <Disabled Value="false" />
   <Notes>
     <KeyTracks>
-      <KeyTrack Id="0">
-        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
-        <MidiKey Value="60" />
-      </KeyTrack>
+      <KeyTrack Id="0"><Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" OffVelocity="64" NoteId="1" IsEnabled="true" /></Notes><MidiKey Value="60" /></KeyTrack>
     </KeyTracks>
   </Notes>
 </MidiClip><MidiClip Id="0" Time="0.0">
@@ -234,16 +226,15 @@
   <Loop>
     <LoopStart Value="0" />
     <LoopEnd Value="16.0" />
+    <StartRelative Value="0" />
     <LoopOn Value="false" />
   </Loop>
   <Name Value="Intro" />
   <Color Value="0" />
+  <Disabled Value="false" />
   <Notes>
     <KeyTracks>
-      <KeyTrack Id="0">
-        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
-        <MidiKey Value="60" />
-      </KeyTrack>
+      <KeyTrack Id="0"><Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" OffVelocity="64" NoteId="1" IsEnabled="true" /></Notes><MidiKey Value="60" /></KeyTrack>
     </KeyTracks>
   </Notes>
 </MidiClip><MidiClip Id="1" Time="16.0">
@@ -253,16 +244,15 @@
   <Loop>
     <LoopStart Value="0" />
     <LoopEnd Value="32.0" />
+    <StartRelative Value="0" />
     <LoopOn Value="false" />
   </Loop>
   <Name Value="Verse 1" />
   <Color Value="1" />
+  <Disabled Value="false" />
   <Notes>
     <KeyTracks>
-      <KeyTrack Id="0">
-        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
-        <MidiKey Value="60" />
-      </KeyTrack>
+      <KeyTrack Id="0"><Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" OffVelocity="64" NoteId="1" IsEnabled="true" /></Notes><MidiKey Value="60" /></KeyTrack>
     </KeyTracks>
   </Notes>
 </MidiClip><MidiClip Id="2" Time="48.0">
@@ -272,16 +262,15 @@
   <Loop>
     <LoopStart Value="0" />
     <LoopEnd Value="32.0" />
+    <StartRelative Value="0" />
     <LoopOn Value="false" />
   </Loop>
   <Name Value="Chorus" />
   <Color Value="2" />
+  <Disabled Value="false" />
   <Notes>
     <KeyTracks>
-      <KeyTrack Id="0">
-        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
-        <MidiKey Value="60" />
-      </KeyTrack>
+      <KeyTrack Id="0"><Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" OffVelocity="64" NoteId="1" IsEnabled="true" /></Notes><MidiKey Value="60" /></KeyTrack>
     </KeyTracks>
   </Notes>
 </MidiClip>
@@ -375,16 +364,15 @@
   <Loop>
     <LoopStart Value="0" />
     <LoopEnd Value="32" />
+    <StartRelative Value="0" />
     <LoopOn Value="false" />
   </Loop>
   <Name Value="AudioDecoy" />
   <Color Value="0" />
+  <Disabled Value="false" />
   <Notes>
     <KeyTracks>
-      <KeyTrack Id="0">
-        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
-        <MidiKey Value="60" />
-      </KeyTrack>
+      <KeyTrack Id="0"><Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" OffVelocity="64" NoteId="1" IsEnabled="true" /></Notes><MidiKey Value="60" /></KeyTrack>
     </KeyTracks>
   </Notes>
 </AudioClip>
@@ -436,16 +424,15 @@
   <Loop>
     <LoopStart Value="0" />
     <LoopEnd Value="64" />
+    <StartRelative Value="0" />
     <LoopOn Value="false" />
   </Loop>
   <Name Value="KeysDecoy" />
   <Color Value="0" />
+  <Disabled Value="false" />
   <Notes>
     <KeyTracks>
-      <KeyTrack Id="0">
-        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
-        <MidiKey Value="60" />
-      </KeyTrack>
+      <KeyTrack Id="0"><Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" OffVelocity="64" NoteId="1" IsEnabled="true" /></Notes><MidiKey Value="60" /></KeyTrack>
     </KeyTracks>
   </Notes>
 </MidiClip>

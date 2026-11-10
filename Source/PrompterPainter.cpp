@@ -125,10 +125,67 @@ void PrompterPainter::paint (juce::Graphics& g, juce::Rectangle<int> bounds,
         return;
     }
 
+    const bool chords = settings.showChords && s.hasChords;
     if (settings.showLyrics)
+    {
+        if (chords)
+        {
+            paintChords (g, area.removeFromTop (16.0f * unit), unit, s, false);
+            area.removeFromTop (2.0f * unit);
+        }
         paintLyrics (g, area, unit, s);
+    }
+    else if (chords)
+    {
+        paintChords (g, area, unit, s, true);   // for keys / guitar: chords fill the screen
+    }
     else if (settings.showSongPart)
+    {
         paintStructureOnly (g, area, unit, s, song);
+    }
+}
+
+void PrompterPainter::paintChords (juce::Graphics& g, juce::Rectangle<float> area, float unit,
+                                   const PrompterScene& s, bool big)
+{
+    const float scale = big ? 1.8f : 1.0f;
+    if (big)   // one row in the middle, not spread over the whole height
+        area = area.withSizeKeepingCentre (area.getWidth(), juce::jmin (area.getHeight(), 34.0f * unit));
+    auto prev = area.removeFromLeft (area.getWidth() * 0.22f);
+    auto next = area.removeFromRight (area.getWidth() * 0.30f);
+    auto now = area;
+
+    if (! s.prevChord.empty())
+    {
+        g.setColour (theme::faint.brighter (0.4f));
+        g.setFont (font (5.0f * unit * scale));
+        g.drawFittedText (str (s.prevChord), prev.toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
+    }
+
+    // Current: as large as fits; the bass note under it.
+    auto bassArea = s.bassNote.empty() ? juce::Rectangle<float>() : now.removeFromBottom (now.getHeight() * 0.28f);
+    const auto name = s.chord.empty() ? juce::String ("-") : str (s.chord) + (s.chordUnsure ? "?" : "");
+    g.setColour (s.chord.empty() ? theme::dim : theme::count);
+    g.setFont (font (juce::jmin (now.getHeight() * 0.95f, 12.0f * unit * scale), true));
+    g.drawFittedText (name, now.toNearestInt(), juce::Justification::centred, 1, 0.6f);
+    if (! bassArea.isEmpty())
+    {
+        g.setColour (theme::sectionNow.brighter (0.3f));
+        g.setFont (font (juce::jmin (bassArea.getHeight() * 0.9f, 4.5f * unit * scale), true));
+        g.drawFittedText ("bass " + str (s.bassNote), bassArea.toNearestInt(), juce::Justification::centredTop, 1, 0.8f);
+    }
+
+    if (! s.nextChord.empty())
+    {
+        auto label = next.removeFromBottom (next.getHeight() * 0.32f);
+        g.setColour (theme::text.withAlpha (0.8f));
+        g.setFont (font (6.5f * unit * scale, true));
+        g.drawFittedText (str (s.nextChord), next.toNearestInt(), juce::Justification::centredRight, 1, 0.7f);
+        g.setColour (theme::dim);
+        g.setFont (font (2.8f * unit * scale));
+        g.drawFittedText ("in " + str (describeDistance (s.beatsToNextChord, s.sig)), label.toNearestInt(),
+                          juce::Justification::centredRight, 1, 0.8f);
+    }
 }
 
 void PrompterPainter::paintHeader (juce::Graphics& g, juce::Rectangle<float> area, float unit,

@@ -90,8 +90,8 @@ private:
     juce::TextButton displayButton;
     juce::ToggleButton showPart   { "Song part" };
     juce::ToggleButton showLyrics { "Lyrics" };
-    juce::ToggleButton showChords { "Chords (coming)" };
-    juce::ToggleButton showBass   { "Bass note (coming)" };
+    juce::ToggleButton showChords { "Chords" };
+    juce::ToggleButton showBass   { "Bass note" };
     juce::Label  sizeLabel { {}, "Text size" };
     juce::Slider sizeSlider;
     juce::Label  countLabel { {}, "Count-in" };

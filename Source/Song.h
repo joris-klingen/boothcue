@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Chords.h"
+
 #include <string>
 #include <vector>
 
@@ -64,6 +66,14 @@ public:
     double start() const { return sections_.empty() ? 0.0 : sections_.front().start; }
     double end() const;
 
+    // ---- chords (detected from the set's MIDI, or written by hand) -----------
+    void setChords (std::vector<ChordSpan>, Key);
+    const std::vector<ChordSpan>& chords() const { return chords_; }
+    Key key() const { return key_; }
+    int chordAt (double ppq) const;            // the chord sounding; -1 in a gap
+    int previousChordBefore (double ppq) const;   // the one before chordAt (or before ppq)
+    int nextChordAfter (double ppq) const;     // the first one starting after ppq
+
     // ---- lookups (all return -1 for "none") --------------------------------
     int sectionAt (double ppq) const;
     int nextSectionAfter (double ppq) const;       // first section starting after ppq
@@ -94,6 +104,8 @@ private:
     double                  barLength_ = 0.0;
     std::vector<int>        sectionBlock_;   // per section: block index or -1
     std::vector<Cue>        cues_;           // sorted by ppq
+    std::vector<ChordSpan>  chords_;         // sorted by start
+    Key                     key_;
 };
 
 // Offsets (beats from section start) for every line of a block in a section of

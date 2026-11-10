@@ -302,6 +302,31 @@ namespace
         p.setPlayHead (nullptr);
     }
 
+    // Chords detected from a linked set's MIDI, saved, and restored.
+    void chordTests (const juce::File& fixtures)
+    {
+        BoothCueAudioProcessor p;
+        p.linkSet (fixtures.getChildFile ("notes.als"));
+        EXPECT (waitFor (p, State::ok));
+        const auto& song = p.getSong();
+        EXPECT (song.chords().size() >= 4);
+        EXPECT (song.chordAt (1.0) >= 0 && chordName (song.chords()[static_cast<std::size_t> (song.chordAt (1.0))].chord, song.key()) == "C");
+        EXPECT (p.getLinkStatus().chordSummary.contains ("Keys") && p.getLinkStatus().chordSummary.contains ("Bass"));
+
+        juce::MemoryBlock m;
+        p.getStateInformation (m);
+        BoothCueAudioProcessor q;
+        q.setStateInformation (m.getData(), static_cast<int> (m.getSize()));
+        EXPECT (q.getSong().chords().size() == song.chords().size());
+        if (q.getSong().chords().size() == song.chords().size() && ! song.chords().empty())
+            EXPECT (q.getSong().chords()[0].chord == song.chords()[0].chord && q.getSong().key().tonic == song.key().tonic);
+        EXPECT (q.getLinkStatus().chordSummary == p.getLinkStatus().chordSummary);
+
+        // Unlinking clears them.
+        p.unlinkSet();
+        EXPECT (p.getSong().chords().empty());
+    }
+
     // Step 6: display / tap settings, the display window and the editor size
     // come back with the state.
     void settingsTests()
@@ -547,6 +572,7 @@ int main (int argc, char** argv)
         const auto fixtures = juce::File::getCurrentWorkingDirectory().getChildFile (argv[1]);
         linkTests (fixtures);
         tapTests (fixtures);
+        chordTests (fixtures);
         settingsTests();
         editorSnapshot (fixtures);
     }

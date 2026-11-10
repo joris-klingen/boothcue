@@ -95,6 +95,7 @@ public:
         int sections = 0;           // in the structure shown
         juce::String trackName;     // the track the sections came from
         bool usedFallback = false;  // no "parts" track: the 2nd track was used
+        juce::String chordSummary;  // where the chords come from, the key; empty: no MIDI
     };
 
     void linkSet (const juce::File&);

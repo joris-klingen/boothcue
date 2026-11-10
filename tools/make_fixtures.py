@@ -13,30 +13,42 @@ import sys
 OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), '..', 'tests', 'fixtures')
 
 
-def midi_clip(i, start, end, name, tag='MidiClip'):
+def midi_clip(i, start, end, name, tag='MidiClip', notes=None, loop=None, disabled=False):
+    """notes: [(time, duration, pitch, velocity, enabled)] in clip content time.
+    loop: (loop_start, loop_end, start_relative, loop_on); default: the whole clip, off."""
+    if notes is None:
+        notes = [(0, 1, 60, 100, True)]
+    loop_start, loop_end, start_rel, loop_on = loop if loop else (0, end - start, 0, False)
+    keys = {}
+    for t, d, p, v, on in notes:
+        keys.setdefault(p, []).append(
+            f'<MidiNoteEvent Time="{t}" Duration="{d}" Velocity="{v}" OffVelocity="64" NoteId="1" '
+            f'IsEnabled="{"true" if on else "false"}" />')
+    key_tracks = ''.join(
+        f'<KeyTrack Id="{n}"><Notes>{"".join(evs)}</Notes><MidiKey Value="{p}" /></KeyTrack>'
+        for n, (p, evs) in enumerate(sorted(keys.items())))
     return f'''<{tag} Id="{i}" Time="{start}">
   <LomId Value="0" />
   <CurrentStart Value="{start}" />
   <CurrentEnd Value="{end}" />
   <Loop>
-    <LoopStart Value="0" />
-    <LoopEnd Value="{end - start}" />
-    <LoopOn Value="false" />
+    <LoopStart Value="{loop_start}" />
+    <LoopEnd Value="{loop_end}" />
+    <StartRelative Value="{start_rel}" />
+    <LoopOn Value="{"true" if loop_on else "false"}" />
   </Loop>
   <Name Value="{name}" />
   <Color Value="{i}" />
+  <Disabled Value="{"true" if disabled else "false"}" />
   <Notes>
     <KeyTracks>
-      <KeyTrack Id="0">
-        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
-        <MidiKey Value="60" />
-      </KeyTrack>
+      {key_tracks}
     </KeyTracks>
   </Notes>
 </{tag}>'''
 
 
-def track(tag, i, user, effective, clips=(), group=-1, session=(), lanes=()):
+def track(tag, i, user, effective, clips=(), group=-1, session=(), lanes=(), muted=False, drums=False):
     seq = 'ClipTimeable' if tag == 'MidiTrack' else 'Sample'
     return f'''<{tag} Id="{i}">
   <LomId Value="0" />
@@ -58,7 +70,7 @@ def track(tag, i, user, effective, clips=(), group=-1, session=(), lanes=()):
   <DeviceChain>
     <Mixer>
       <Name><EffectiveName Value="Mixer" /><UserName Value="parts" /></Name>
-      <Speaker><Manual Value="true" /></Speaker>
+      <Speaker><Manual Value="{"false" if muted else "true"}" /></Speaker>
     </Mixer>
     <MainSequencer>
       <ClipSlotList>
@@ -76,7 +88,7 @@ def track(tag, i, user, effective, clips=(), group=-1, session=(), lanes=()):
       <Devices>
         <PluginDevice Id="0">
           <Name><EffectiveName Value="parts" /><UserName Value="parts" /></Name>
-        </PluginDevice>
+        </PluginDevice>{'<DrumGroupDevice Id="1"><Branches /></DrumGroupDevice>' if drums else ''}
       </Devices>
     </DeviceChain>
   </DeviceChain>
@@ -170,7 +182,41 @@ with open(path, 'rb') as f:
 with open(os.path.join(OUT, 'truncated.als'), 'wb') as f:
     f.write(whole[:400])
 
-# 6. Not a Live set at all.
+# 6. Notes for chord detection: every clip-timing rule once.
+C, Am, F, G = (60, 64, 67), (57, 60, 64), (65, 69, 72), (67, 71, 74)
+def chord(t, d, pitches, v=90):
+    return [(t, d, p, v, True) for p in pitches]
+keys_clips = [
+    # A: plain, 0-8: C then Am, plus a deactivated note.
+    midi_clip(0, 0, 8, 'A', notes=chord(0, 4, C) + chord(4, 4, Am) + [(2, 1, 61, 90, False)]),
+    # B: looped 4-beat F G, played 8-16 (twice).
+    midi_clip(1, 8, 16, 'B', notes=chord(0, 2, F) + chord(2, 2, G), loop=(0, 4, 0, True)),
+    # C: not looped, start marker at 2, end marker at 8: content 0 is before the
+    #    start, content 9 after the end; plays 16-24.
+    midi_clip(2, 16, 24, 'C', notes=[(0, 1, 40, 90, True), (2, 4, 41, 90, True), (6, 4, 42, 90, True),
+                                       (9, 1, 43, 90, True)], loop=(0, 8, 2, False)),
+    # D: deactivated clip.
+    midi_clip(3, 24, 32, 'D', notes=chord(0, 8, C), disabled=True),
+    # E: loop 2-6, start marker 3 (2 + 1), played 32-40: 49@32 50@34, then
+    #    48@35 49@36 50@38, then 48@39.
+    midi_clip(4, 32, 40, 'E', notes=[(2, 0.5, 48, 90, True), (3, 0.5, 49, 90, True), (5, 0.5, 50, 90, True)],
+              loop=(2, 6, 1, True)),
+]
+noted = [
+    track('MidiTrack', 10, 'length', 'length', [midi_clip(0, 0, 40, 'length', notes=[])]),
+    track('MidiTrack', 11, 'Parts', 'Parts', [midi_clip(0, 0, 16, 'Verse', notes=[]), midi_clip(1, 16, 32, 'Chorus', notes=[])]),
+    track('MidiTrack', 12, 'Keys', 'Keys', keys_clips),
+    track('MidiTrack', 13, 'Bass', 'Bass', [midi_clip(0, 0, 16, 'b', notes=[(0, 4, 36, 100, True), (4, 4, 33, 100, True),
+                                                                          (8, 2, 41, 100, True), (10, 2, 43, 100, True),
+                                                                          (12, 2, 41, 100, True), (14, 2, 43, 100, True)])]),
+    track('MidiTrack', 14, 'Drums', 'Drums', [midi_clip(0, 0, 16, 'beat', notes=[(t, 0.25, 36, 100, True) for t in range(16)])],
+          drums=True),
+    track('MidiTrack', 15, 'Old keys', 'Old keys', [midi_clip(0, 0, 16, 'x', notes=chord(0, 16, (61, 65, 68)))], muted=True),
+    track('AudioTrack', 16, 'Vox', 'Vox'),
+]
+write('notes.als', live_set(noted))
+
+# 7. Not a Live set at all.
 write('not-a-set.als', '<?xml version="1.0"?><Other><LiveSet><Tracks /></LiveSet></Other>')
 
 print('wrote fixtures to', os.path.abspath(OUT))

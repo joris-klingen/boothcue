@@ -23,6 +23,7 @@ add_library(boothcue-core STATIC
     Source/LyricImport.cpp
     Source/Prompter.cpp
     Source/Chords.cpp
+    Source/SetChords.cpp
 )
 target_include_directories(boothcue-core PUBLIC Source)
 target_link_libraries(boothcue-core PUBLIC ZLIB::ZLIB)

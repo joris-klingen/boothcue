@@ -119,7 +119,8 @@ namespace
     class StructureHandler : public XmlScanner::Handler
     {
     public:
-        explicit StructureHandler (const std::string& wantedName) : wanted (lowerTrimmed (wantedName)) {}
+        StructureHandler (const std::string& wantedName, bool notes)
+            : wanted (lowerTrimmed (wantedName)), readNotes (notes) {}
 
         void startElement (const std::string& name, const XmlScanner::Attributes& attrs) override
         {
@@ -147,9 +148,108 @@ namespace
                 clip = AlsSection();
                 clipHasStart = parseDouble (attribute (attrs, "Time"), clip.start);
                 clipHasEnd = false;
+                content = Content();
             }
             else if (rel == kClipEnd)   clipHasEnd = parseDouble (attribute (attrs, "Value"), clip.end);
             else if (rel == kClipName)  clip.name = attribute (attrs, "Value");
+            else if (readNotes)
+                noteElement (name, attrs);
+        }
+
+        // ---- notes (readNotes) ---------------------------------------------------
+        void noteElement (const std::string& name, const XmlScanner::Attributes& attrs)
+        {
+            if (name == "DrumGroupDevice")
+                track.drums = true;
+            else if (rel == "/DeviceChain/Mixer/Speaker/Manual")
+                track.muted = lowerTrimmed (attribute (attrs, "Value")) == "false";
+            else if (rel.compare (0, kClip.size(), kClip) != 0)
+                return;
+
+            const auto sub = rel.substr (std::min (rel.size(), kClip.size()));
+            double v = 0.0;
+            if (sub == "/Loop/LoopStart" && parseDouble (attribute (attrs, "Value"), v))           content.loopStart = v;
+            else if (sub == "/Loop/LoopEnd" && parseDouble (attribute (attrs, "Value"), v))        content.loopEnd = v;
+            else if (sub == "/Loop/StartRelative" && parseDouble (attribute (attrs, "Value"), v))  content.startRelative = v;
+            else if (sub == "/Loop/LoopOn")     content.loopOn = lowerTrimmed (attribute (attrs, "Value")) == "true";
+            else if (sub == "/Disabled")        content.disabled = lowerTrimmed (attribute (attrs, "Value")) == "true";
+            else if (sub == "/Notes/KeyTracks/KeyTrack")
+            {
+                keyNotes.clear();
+                key = -1;
+            }
+            else if (sub == "/Notes/KeyTracks/KeyTrack/MidiKey")
+            {
+                if (parseDouble (attribute (attrs, "Value"), v))
+                    key = static_cast<int> (v);
+            }
+            else if (sub == "/Notes/KeyTracks/KeyTrack/Notes/MidiNoteEvent")
+            {
+                if (lowerTrimmed (attribute (attrs, "IsEnabled")) == "false")
+                    return;
+                AlsNote n;
+                double vel = 100.0;
+                if (! parseDouble (attribute (attrs, "Time"), n.start) || ! parseDouble (attribute (attrs, "Duration"), n.length))
+                    return;
+                if (parseDouble (attribute (attrs, "Velocity"), vel))
+                    n.velocity = static_cast<int> (vel + 0.5);
+                keyNotes.push_back (n);
+            }
+        }
+
+        void endKeyTrack()
+        {
+            if (key < 0)
+                return;
+            for (auto n : keyNotes)
+            {
+                n.pitch = key;
+                content.notes.push_back (n);
+            }
+            keyNotes.clear();
+        }
+
+        // The clip's content notes, placed in the arrangement.
+        void placeClip()
+        {
+            if (content.disabled || ! clipHasStart || ! clipHasEnd || clip.end <= clip.start)
+                return;
+            const double clipStart = clip.start, clipEnd = clip.end;
+            const double markerStart = content.loopStart + content.startRelative;
+            const double loopLength = content.loopEnd - content.loopStart;
+
+            auto place = [&] (double contentFrom, double contentTo, double at)
+            {
+                for (const auto& n : content.notes)
+                {
+                    if (n.start < contentFrom - 1.0e-9 || n.start >= contentTo - 1.0e-9)
+                        continue;
+                    AlsNote out = n;
+                    out.start = at + (n.start - contentFrom);
+                    const double stop = std::min (clipEnd, at + (contentTo - contentFrom));
+                    if (out.start >= clipEnd - 1.0e-9)
+                        continue;
+                    out.length = std::min (n.length, stop - out.start);
+                    if (out.length > 1.0e-9)
+                        track.notes.push_back (out);
+                }
+            };
+
+            if (! content.loopOn || loopLength <= 1.0e-9)
+            {
+                place (markerStart, content.loopEnd > markerStart ? content.loopEnd : 1.0e12, clipStart);
+                return;
+            }
+            // Looped: from the start marker to the loop end, then the loop again.
+            double at = clipStart, from = markerStart;
+            for (int pass = 0; at < clipEnd - 1.0e-9 && pass < 100000; ++pass)
+            {
+                if (from >= content.loopEnd - 1.0e-9)
+                    from = content.loopStart;
+                place (from, content.loopEnd, at);
+                at += content.loopEnd - from;
+                from = content.loopStart;
+            }
         }
 
         void endElement (const std::string&) override
@@ -159,7 +259,13 @@ namespace
                 if (depth > 4)
                 {
                     if (rel == kClip && clipHasStart && clipHasEnd && clip.end > clip.start)
+                    {
                         track.clips.push_back (clip);
+                        if (readNotes)
+                            placeClip();
+                    }
+                    else if (readNotes && rel == kClip + "/Notes/KeyTracks/KeyTrack")
+                        endKeyTrack();
                     rel.erase (rel.rfind ('/'));
                 }
                 else if (depth == 4)
@@ -196,6 +302,7 @@ namespace
             }
 
             r.ok = true;
+            r.midiTracks = midiTracks;
             r.trackName  = chosen->name();
             r.trackIndex = chosen->index;
             r.sections   = chosen->clips;
@@ -210,17 +317,38 @@ namespace
             std::string type, userName, effectiveName;
             std::vector<AlsSection> clips;
             int index = -1;
+            bool muted = false, drums = false;
+            std::vector<AlsNote> notes;
             const std::string& name() const { return userName.empty() ? effectiveName : userName; }
+        };
+
+        struct Content
+        {
+            double loopStart = 0.0, loopEnd = 0.0, startRelative = 0.0;
+            bool loopOn = false, disabled = false;
+            std::vector<AlsNote> notes;   // in content time
         };
 
         void finishTrack()
         {
             track.index = trackCount++;
-            if (track.type == "MidiTrack" && lowerTrimmed (track.name()) == wanted)
+            if (readNotes && track.type == "MidiTrack")
+            {
+                AlsMidiTrack t;
+                t.name = track.name();
+                t.index = track.index;
+                t.muted = track.muted;
+                t.drums = track.drums;
+                t.notes = std::move (track.notes);
+                std::stable_sort (t.notes.begin(), t.notes.end(),
+                                  [] (const AlsNote& a, const AlsNote& b) { return a.start < b.start; });
+                midiTracks.push_back (std::move (t));
+            }
+            if (track.type == "MidiTrack" && lowerTrimmed (track.name()) == wanted && ! haveNamed)
             {
                 named = track;
                 haveNamed = true;
-                finished = true;   // nothing later in the file matters
+                finished = ! readNotes;   // without notes, nothing later in the file matters
             }
             else if (track.index == 1)
             {
@@ -234,6 +362,7 @@ namespace
         const std::string kClipName = kClip + "/Name";
 
         std::string wanted;
+        bool readNotes = false;
         int depth = 0;
         bool isAbleton = false, inLiveSet = false, inTracks = false, sawTracks = false, finished = false;
 
@@ -244,6 +373,11 @@ namespace
 
         AlsSection clip;
         bool clipHasStart = false, clipHasEnd = false;
+
+        Content content;
+        std::vector<AlsNote> keyNotes;
+        int key = -1;
+        std::vector<AlsMidiTrack> midiTracks;
     };
 }
 
@@ -364,9 +498,9 @@ bool XmlScanner::parseTag (const char* p, const char* end)
 
 // ---- entry points ---------------------------------------------------------------
 
-AlsResult parseAlsXml (const std::string& xml, const std::string& trackName)
+AlsResult parseAlsXml (const std::string& xml, const std::string& trackName, bool readNotes)
 {
-    StructureHandler handler (trackName);
+    StructureHandler handler (trackName, readNotes);
     XmlScanner scanner (handler);
     if (! scanner.feed (xml.data(), xml.size()))
     {
@@ -377,7 +511,7 @@ AlsResult parseAlsXml (const std::string& xml, const std::string& trackName)
     return handler.result();
 }
 
-AlsResult parseAlsFile (const std::string& path, const std::string& trackName)
+AlsResult parseAlsFile (const std::string& path, const std::string& trackName, bool readNotes)
 {
     AlsResult failure;
 
@@ -388,7 +522,7 @@ AlsResult parseAlsFile (const std::string& path, const std::string& trackName)
         return failure;
     }
 
-    StructureHandler handler (trackName);
+    StructureHandler handler (trackName, readNotes);
     XmlScanner scanner (handler);
 
     constexpr std::size_t kChunk = 1 << 16;

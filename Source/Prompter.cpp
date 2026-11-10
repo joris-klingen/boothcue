@@ -73,6 +73,41 @@ PrompterScene buildScene (const Song& song, const TransportState& t, const Displ
             s.beatsToNextSection = song.sections()[static_cast<std::size_t> (s.nextSection)].start - t.ppq;
     }
 
+    if (settings.showChords && ! song.chords().empty())
+    {
+        s.hasChords = true;
+        const auto key = song.key();
+        auto name = [&] (int index)
+        {
+            if (index < 0)
+                return std::string();
+            auto c = song.chords()[static_cast<std::size_t> (index)].chord;
+            if (settings.showBassNote)
+                c.bass = c.root;   // the bass is shown on its own
+            return chordName (c, key);
+        };
+        const int now = song.chordAt (t.ppq);
+        const int prev = song.previousChordBefore (t.ppq);
+        const int next = song.nextChordAfter (t.ppq);
+        s.chord = name (now);
+        s.prevChord = name (prev);
+        s.nextChord = name (next);
+        if (next >= 0)
+            s.beatsToNextChord = song.chords()[static_cast<std::size_t> (next)].start - t.ppq;
+        if (now >= 0)
+        {
+            const auto& span = song.chords()[static_cast<std::size_t> (now)];
+            s.chordUnsure = span.confidence < 0.15;
+            if (settings.showBassNote && span.chord.bass >= 0)
+            {
+                Chord bassOnly;
+                bassOnly.root = span.chord.bass;
+                bassOnly.quality = Quality::major;
+                s.bassNote = chordName (bassOnly, key);   // a plain note name
+            }
+        }
+    }
+
     if (s.hasLyrics && settings.showLyrics)
     {
         s.currentCue  = song.cueAt (t.ppq);

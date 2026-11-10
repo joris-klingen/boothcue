@@ -54,6 +54,13 @@ namespace
     const juce::Identifier kSnap      { "snap" };
     const juce::Identifier kLatency   { "latency" };
     const juce::Identifier kEditor    { "Editor" };
+    // <Chords tonic minor summary><C s e r q b c/>...</Chords>: the last chords
+    // detected, so they show where the set's file isn't
+    const juce::Identifier kChords    { "Chords" };
+    const juce::Identifier kChord     { "C" };
+    const juce::Identifier kTonic     { "tonic" };
+    const juce::Identifier kMinor     { "minor" };
+    const juce::Identifier kSummary   { "summary" };
     const juce::Identifier kWidth     { "w" };
     const juce::Identifier kHeight    { "h" };
 
@@ -184,6 +191,7 @@ void BoothCueAudioProcessor::unlinkSet()
     JUCE_ASSERT_MESSAGE_THREAD
     watcher.watch ({});
     linkStatus = LinkStatus();
+    song.setChords ({}, {});
     setSections ({});
     updateStateSnapshot();
 }
@@ -213,13 +221,16 @@ void BoothCueAudioProcessor::timerCallback()
     if (watcher.takeReport (report) && report.file == linkStatus.file)
         applyReport (report);
 
-    // Untimed lines spread on the host's bar grid.
+    // Untimed lines spread on the host's bar grid; chords are detected on it.
     if (const auto t = transport.read(); t.valid)
     {
         const double bar = TimeSig { t.sigNum, t.sigDen }.barLength();
         if (std::abs (bar - song.barLength()) > 1.0e-9)
         {
             song.setBarLength (bar);
+            watcher.setBarBeats (bar);
+            if (linkStatus.file != juce::File())
+                watcher.rescan();
             ++contentVersion;
         }
     }
@@ -248,6 +259,29 @@ void BoothCueAudioProcessor::applyReport (const SetWatcher::Report& report)
         linkStatus.trackName    = juce::String::fromUTF8 (report.result.trackName.c_str());
         linkStatus.usedFallback = report.result.usedFallback;
         setSections (std::move (sections));
+
+        // Chords from the set's MIDI.
+        const auto& c = report.chords;
+        song.setChords (c.result.spans, c.result.key);
+        if (! c.anyNotes || c.result.spans.empty())
+        {
+            linkStatus.chordSummary = {};
+        }
+        else
+        {
+            auto names = [] (const std::vector<std::string>& v)
+            {
+                juce::StringArray a;
+                for (const auto& n : v)
+                    a.add (str (n));
+                return a.joinIntoString (", ");
+            };
+            auto text = "Chords from " + (c.chordTracks.empty() ? juce::String ("the bass") : names (c.chordTracks));
+            if (! c.bassTracks.empty())
+                text << ", bass from " << names (c.bassTracks);
+            text << " - key " << str (keyName (c.result.key)) << ", " << juce::String (c.result.spans.size()) << " chords";
+            linkStatus.chordSummary = text;
+        }
     }
     // A failed read keeps the structure from before: say how much is shown.
     linkStatus.sections = static_cast<int> (song.sections().size());
@@ -537,6 +571,26 @@ void BoothCueAudioProcessor::updateStateSnapshot()
         }
     }
 
+    if (! song.chords().empty())
+    {
+        juce::ValueTree chords (kChords);
+        chords.setProperty (kTonic, song.key().tonic, nullptr);
+        chords.setProperty (kMinor, song.key().minor, nullptr);
+        chords.setProperty (kSummary, linkStatus.chordSummary, nullptr);
+        for (const auto& c : song.chords())
+        {
+            juce::ValueTree t (kChord);
+            t.setProperty ("s", c.start, nullptr);
+            t.setProperty ("e", c.end, nullptr);
+            t.setProperty ("r", c.chord.root, nullptr);
+            t.setProperty ("q", static_cast<int> (c.chord.quality), nullptr);
+            t.setProperty ("b", c.chord.bass, nullptr);
+            t.setProperty ("c", c.confidence, nullptr);
+            chords.appendChild (t, nullptr);
+        }
+        state.appendChild (chords, nullptr);
+    }
+
     if (! song.blocks().empty())
     {
         juce::ValueTree lyrics (kLyrics);
@@ -617,6 +671,25 @@ void BoothCueAudioProcessor::applyState (const juce::ValueTree& state)
     hasUndo = false;
     tapCursor = TapCursor();
 
+    {
+        const auto c = state.getChildWithName (kChords);
+        std::vector<ChordSpan> spans;
+        for (const auto& t : c)
+        {
+            if (! t.hasType (kChord))
+                continue;
+            ChordSpan span;
+            span.start = t["s"];
+            span.end = t["e"];
+            span.chord.root = t["r"];
+            span.chord.quality = static_cast<Quality> (juce::jlimit (0, static_cast<int> (Quality::power), static_cast<int> (t["q"])));
+            span.chord.bass = t["b"];
+            span.confidence = t["c"];
+            spans.push_back (span);
+        }
+        song.setChords (std::move (spans), Key { static_cast<int> (c.getProperty (kTonic, 0)), static_cast<bool> (c[kMinor]) });
+    }
+
     // Show the saved structure at once; the watcher re-reads the file (if it
     // is there) and replaces it.
     setSections (std::move (sections));
@@ -626,6 +699,7 @@ void BoothCueAudioProcessor::applyState (const juce::ValueTree& state)
     linkStatus.sections = static_cast<int> (song.sections().size());
     linkStatus.trackName = set[kTrack].toString();
     linkStatus.usedFallback = static_cast<bool> (set[kFallback]);
+    linkStatus.chordSummary = state.getChildWithName (kChords)[kSummary].toString();
     if (juce::File::isAbsolutePath (path))
     {
         linkStatus.state = LinkStatus::State::reading;

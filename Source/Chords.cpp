@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cctype>
 #include <cstdlib>
 #include <limits>
 
@@ -181,18 +182,24 @@ namespace
                 // some tolerance, never at where they end.
                 constexpr double loose = 0.15;
                 auto stepTo = [] (int a, int b) { const int d = std::abs (a - b); return d >= 1 && d <= 2; };
-                auto startsTogether = [&notes] (std::size_t i)   // part of a chord (a stab), not a lone note
+                // Notes are sorted by start: look only at the window that matters.
+                auto firstFrom = [&notes] (double from)
                 {
-                    for (std::size_t j = 0; j < notes.size(); ++j)
-                        if (j != i && std::abs (notes[j].start - notes[i].start) <= kTouch)
+                    return static_cast<std::size_t> (std::lower_bound (notes.begin(), notes.end(), from,
+                        [] (const ChordNote& n, double v) { return n.start < v; }) - notes.begin());
+                };
+                auto startsTogether = [&] (std::size_t i)   // part of a chord (a stab), not a lone note
+                {
+                    for (std::size_t j = firstFrom (notes[i].start - kTouch); j < notes.size() && notes[j].start <= notes[i].start + kTouch; ++j)
+                        if (j != i)
                             return true;
                     return false;
                 };
-                // A note starting in (from, to] a step away from `pitch`.
-                auto stepBetween = [&notes, &stepTo] (std::size_t i, double from, double to)
+                // A note starting in (from, to] a step away from note i.
+                auto stepBetween = [&] (std::size_t i, double from, double to)
                 {
-                    for (std::size_t j = 0; j < notes.size(); ++j)
-                        if (j != i && notes[j].start > from && notes[j].start <= to && stepTo (notes[j].pitch, notes[i].pitch))
+                    for (std::size_t j = firstFrom (from); j < notes.size() && notes[j].start <= to; ++j)
+                        if (j != i && notes[j].start > from && stepTo (notes[j].pitch, notes[i].pitch))
                             return static_cast<int> (j);
                     return -1;
                 };
@@ -246,7 +253,8 @@ namespace
                         continue;
                     int with = 0;
                     bool held = false;
-                    for (std::size_t j = 0; j < notes.size(); ++j)
+                    // Notes sounding at its start began at most a few bars before.
+                    for (std::size_t j = firstFrom (n.start - 16.0); j < notes.size() && notes[j].start <= n.start + loose; ++j)
                     {
                         if (j == i || static_cast<int> (j) == r)
                             continue;
@@ -672,6 +680,26 @@ ChordResult detectChords (const ChordInput& in, double songEnd, const ChordSetti
         k = j + 1;
     }
     return result;
+}
+
+TrackRole roleFromName (const std::string& trackName)
+{
+    std::string n;
+    for (const char ch : trackName)
+        n += static_cast<char> (std::tolower (static_cast<unsigned char> (ch)));
+    auto has = [&n] (const char* w) { return n.find (w) != std::string::npos; };
+
+    if (n == "parts" || n == "length" || n == "structure" || n == "arrangement")
+        return TrackRole::ignore;
+    for (const char* w : { "drum", "perc", "kick", "snare", "hat", "beat", "click", "metro", "fx" })
+        if (has (w))
+            return TrackRole::ignore;
+    if (has ("bass") || has ("bas ") || n == "bas" || has ("808"))
+        return TrackRole::bass;
+    for (const char* w : { "vox", "vocal", "voc", "zang", "melod", "topline", "lead", "guide", "lyric" })
+        if (has (w))
+            return TrackRole::melody;
+    return TrackRole::automatic;
 }
 
 // ---- names ------------------------------------------------------------------------------

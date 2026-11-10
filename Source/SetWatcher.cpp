@@ -119,7 +119,10 @@ void SetWatcher::run()
                     Report r;
                     r.file = current;
                     r.modified = mod;
-                    r.result = parseAlsFile (current.getFullPathName().toStdString());
+                    r.result = parseAlsFile (current.getFullPathName().toStdString(), "parts", true);
+                    if (r.result.ok)
+                        r.chords = chordsFromSet (r.result, barBeats.load());
+                    r.result.midiTracks.clear();   // the notes are in the chords now
 
                     parsedMod = mod;
                     parsedSize = size;

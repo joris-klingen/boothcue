@@ -110,6 +110,12 @@ struct ChordResult
 
 ChordResult detectChords (const ChordInput&, double songEnd, const ChordSettings& = {});
 
+// A track's role from its name: "Bass", "Synth bass" -> bass; "Lead vox",
+// "Melodie", "Topline" -> melody; "Drums", "Perc", "Click" and the song's own
+// helper tracks ("parts", "length") -> ignore; anything else: decided from
+// its notes. Case-insensitive.
+TrackRole roleFromName (const std::string& trackName);
+
 // "Am", "Bb/F", "F#m7b5", "Ebmaj7", "E7", "C5", "N.C."; flats or sharps from the key.
 std::string chordName (const Chord&, const Key& = {});
 std::string keyName (const Key&);

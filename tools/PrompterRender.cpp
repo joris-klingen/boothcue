@@ -9,6 +9,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "Chords.h"
 #include "LyricImport.h"
 #include "PrompterPainter.h"
 #include "Theme.h"
@@ -45,6 +46,23 @@ namespace
             "Carrying the things we couldn't say\n"
             "[Bridge]\n"
             "Oh-oh, oh-oh\n"));
+
+        // Chords, one or two per bar, as the detector would give them.
+        std::vector<ChordSpan> chords;
+        const char* perBar[] = { "C", "G/B", "Am", "F",  "C", "G/B", "Am", "F",  "Am", "F", "C", "G",
+                                 "F", "G", "C/E", "Am", "F", "G", "C", "C",  "Dm7", "G" };
+        double t = 0.0;
+        for (int bar = 0; bar < 56; ++bar)
+        {
+            ChordSpan c;
+            c.start = t;
+            c.end = t + 4.0;
+            c.confidence = 0.8;
+            parseChordName (perBar[bar % 22], c.chord);
+            chords.push_back (c);
+            t += 4.0;
+        }
+        song.setChords (chords, Key { 0, false });
         return song;
     }
 
@@ -73,10 +91,23 @@ namespace
         const auto song = demoSong();
         std::vector<Scene> out;
         DisplaySettings normal;
+        normal.showChords = false;
 
         out.push_back ({ "Intro, counting in: 2 bars", song, at (4.5), normal });
         out.push_back ({ "Last bar before the entry: beat 3", song, at (13.2, true, true), normal });
         out.push_back ({ "Verse 1, recording", song, at (25.0, true, true), normal });
+
+        DisplaySettings withChords;
+        withChords.showChords = true;
+        withChords.showBassNote = false;
+        DisplaySettings noChords;
+        noChords.showChords = false;
+        out.push_back ({ "Chords + lyrics (bass in the name)", song, at (26.0, true, true), withChords });
+        DisplaySettings bassOn;
+        out.push_back ({ "Chords + lyrics + bass note", song, at (26.0, true, true), bassOn });
+        DisplaySettings playerMode;
+        playerMode.showLyrics = false;
+        out.push_back ({ "Keys / guitar: lyrics off, chords + bass", song, at (27.0), playerMode });
 
         auto looped = at (70.0, true, true);
         looped.looping = true;
@@ -91,11 +122,13 @@ namespace
 
         DisplaySettings noLyrics;
         noLyrics.showLyrics = false;
+        noLyrics.showChords = false;
         out.push_back ({ "Pickups and backing in parentheses, dimmer", song, at (100.0), normal });
         out.push_back ({ "Lyrics off: structure only (players)", song, at (100.0), noLyrics });
 
         DisplaySettings big;
         big.fontScale = 1.6f;
+        big.showChords = false;
         out.push_back ({ "Text size 160%, stopped", song, at (130.0, false), big });
 
         Song structureOnly;

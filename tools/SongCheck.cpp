@@ -866,6 +866,41 @@ namespace
             EXPECT (lyricsToText (again) == lyricsToText (first));
         }
     }
+    void chordSceneTests()
+    {
+        auto song = makeSong();
+        auto span = [] (double a, double b, const char* name, double conf = 0.8)
+        {
+            ChordSpan c;
+            c.start = a; c.end = b; c.confidence = conf;
+            parseChordName (name, c.chord);
+            return c;
+        };
+        song.setChords ({ span (16, 24, "C"), span (24, 32, "Am/E"), span (32, 40, "F", 0.05), span (44, 48, "G") },
+                        Key { 0, false });
+
+        EXPECT (song.chordAt (10) == -1 && song.nextChordAfter (10) == 0 && song.previousChordBefore (10) == -1);
+        EXPECT (song.chordAt (16) == 0 && song.chordAt (23.9) == 0 && song.chordAt (24) == 1);
+        EXPECT (song.previousChordBefore (25) == 0 && song.nextChordAfter (25) == 2);
+        EXPECT (song.chordAt (42) == -1 && song.previousChordBefore (42) == 2 && song.nextChordAfter (42) == 3);
+        EXPECT (song.chordAt (50) == -1 && song.nextChordAfter (50) == -1 && song.previousChordBefore (50) == 3);
+
+        DisplaySettings ds;
+        ds.showBassNote = false;
+        auto sc = buildScene (song, at (26), ds);
+        EXPECT (sc.hasChords && sc.chord == "Am/E" && sc.prevChord == "C" && sc.nextChord == "F");
+        EXPECT (near (sc.beatsToNextChord, 6) && sc.bassNote.empty() && ! sc.chordUnsure);
+        ds.showBassNote = true;
+        sc = buildScene (song, at (26), ds);
+        EXPECT (sc.chord == "Am" && sc.bassNote == "E");   // the bass on its own, not in the name
+        sc = buildScene (song, at (33), ds);
+        EXPECT (sc.chord == "F" && sc.chordUnsure);
+        sc = buildScene (song, at (42), ds);
+        EXPECT (sc.chord.empty() && sc.prevChord == "F" && sc.nextChord == "G");   // a gap
+        ds.showChords = false;
+        EXPECT (! buildScene (song, at (26), ds).hasChords);
+        EXPECT (! buildScene (makeSong(), at (26), DisplaySettings()).hasChords);
+    }
 }
 
 int main (int argc, char** argv)
@@ -883,6 +918,7 @@ int main (int argc, char** argv)
     tapCursorTests();
     tapPositionTests();
     importRuleTests();
+    chordSceneTests();
     if (argc > 1)
         lyricFixtureTests (argv[1]);
     else

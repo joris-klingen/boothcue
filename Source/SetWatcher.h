@@ -3,6 +3,7 @@
 #include <juce_core/juce_core.h>
 
 #include "AlsParser.h"
+#include "SetChords.h"
 
 #include <atomic>
 
@@ -26,6 +27,8 @@ public:
         juce::File file;
         bool missing = false;    // the file doesn't exist (moved, renamed, another machine)
         AlsResult result;        // valid when ! missing; result.ok says whether it parsed
+                                 // (its MIDI notes are dropped after detection)
+        SetChords chords;        // detected from the set's MIDI tracks
         juce::Time modified;     // the file's modification time that was parsed
     };
 
@@ -43,6 +46,10 @@ public:
 
     juce::File getFile() const;
 
+    // The bar length chord detection uses (from the host's time signature).
+    // Call rescan() after a change to detect again.
+    void setBarBeats (double beats) { barBeats.store (beats > 0.0 ? beats : 4.0); }
+
 private:
     void run() override;
 
@@ -54,6 +61,7 @@ private:
     Report pending;               // guarded
     bool hasPending = false;      // guarded
     juce::WaitableEvent wake;
+    std::atomic<double> barBeats { 4.0 };
 };
 
 }  // namespace boothcue

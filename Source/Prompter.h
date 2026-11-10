@@ -55,6 +55,13 @@ struct PrompterScene
     double beatsToNextLine = 0.0;
     Countdown countdown;
 
+    // Chords (with showChords): names spelled in the song's key; with
+    // showBassNote the bass note is shown on its own (and left out of the name).
+    bool hasChords = false;
+    std::string prevChord, chord, nextChord, bassNote;
+    bool chordUnsure = false;      // a low-confidence detection
+    double beatsToNextChord = 0.0;
+
     // Feedback for whoever taps in the display window: shown briefly along the
     // bottom edge, small, so the singer isn't distracted. Set by the view.
     std::string tapNote;

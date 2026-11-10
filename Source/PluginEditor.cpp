@@ -201,9 +201,8 @@ BoothCueAudioProcessorEditor::BoothCueAudioProcessorEditor (BoothCueAudioProcess
         t->onClick = [this] { pushSettings(); };
         addAndMakeVisible (*t);
     }
-    // Stored and saved already; nothing draws them until chord detection lands.
-    showChords.setTooltip ("Shown once chord detection is built (see TODO.md)");
-    showBass.setTooltip ("Shown once chord detection is built (see TODO.md)");
+    showChords.setTooltip ("Previous, current and next chord, detected from the set's MIDI tracks");
+    showBass.setTooltip ("The bass note under the chord, on its own");
 
     sizeSlider.setSliderStyle (juce::Slider::LinearHorizontal);
     sizeSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 20);
@@ -478,6 +477,7 @@ juce::String BoothCueAudioProcessorEditor::linkText (juce::Colour& colour) const
                 colour = theme::loop;
                 text << " No track named \"parts\": used the 2nd track.";
             }
+            text << "\n" << (st.chordSummary.isNotEmpty() ? st.chordSummary : juce::String ("No MIDI chords in the set."));
             return text;
         }
     }
@@ -574,7 +574,7 @@ void BoothCueAudioProcessorEditor::resized()
     reloadButton.setBounds (links.removeFromLeft (80));
     links.removeFromLeft (8);
     unlinkButton.setBounds (links.removeFromLeft (80));
-    linkArea = left.removeFromTop (60).withTrimmedTop (6);
+    linkArea = left.removeFromTop (72).withTrimmedTop (6);
 
     left.removeFromTop (22);   // "Singer display"
     displayButton.setBounds (left.removeFromTop (30).removeFromLeft (220));
@@ -749,7 +749,7 @@ void BoothCueAudioProcessorEditor::paint (juce::Graphics& g)
     g.setFont (font (13.0f));
     const auto status = linkText (linkColour);
     g.setColour (linkColour);
-    g.drawFittedText (status, linkArea, juce::Justification::topLeft, 4, 1.0f);
+    g.drawFittedText (status, linkArea, juce::Justification::topLeft, 5, 1.0f);
 
     // Transport readout, to check the host connection.
     auto area = readoutArea;
