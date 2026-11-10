@@ -18,28 +18,27 @@ under "Done".
   text round trip, taps kept when the text is edited.
 - **Transport hand-off** — `Source/Transport.h`: `TransportState`,
   `SharedTransport` (audio thread -> message thread, lock-free), `LoopCounter`.
+- **Plugin scaffold** (step 1) — `juce_add_plugin(BoothCue)`: JUCE 8.0.15,
+  VST3 + AU (macOS) + Standalone, harmeq identity (`Joris Klingen`,
+  `com.jorisklingen.boothcue`, `Jokl` / `Bcue`), audio effect, no parameters.
+  `PluginProcessor` passes audio through untouched and, also when bypassed,
+  copies the playhead into `SharedTransport` with the loop-pass count. The
+  editor is a temporary transport readout for checking a build in Live.
+  The core is a static library `boothcue-core`; `-DBOOTHCUE_BUILD_PLUGIN=OFF`
+  builds only the core and its checks.
+  Verified on Linux: builds without warnings, pluginval strictness 10 passes.
+  **Not yet verified on macOS** (AU, universal build): that is what CI's macOS
+  job does (`.github/workflows/ci.yml`: build, ctest, pluginval, auval, zip).
 - Tests: `ctest` runs `als-parser` and `song-logic`.
 
 ## v1 — still to build, in this order
 
 Conventions: flashroll / hitnotedmx layout and style (`Source/`, `tools/`,
 `installer/install.command`, `CLAUDE.md`, `STATUS.md`), harmeq's plugin
-identity and CI. Namespace `boothcue`. The files above stay free of JUCE.
+identity and CI. Namespace `boothcue`. The core (`AlsParser`, `Song`,
+`LyricImport`, `Transport.h`) stays free of JUCE.
 
-1. **Plugin scaffold** — `juce_add_plugin(BoothCue ...)` in `CMakeLists.txt`:
-   - JUCE 8.0.15 via FetchContent (as harmeq), `FORMATS VST3 AU`,
-     `COMPANY_NAME "Joris Klingen"`, `BUNDLE_ID com.jorisklingen.boothcue`,
-     `PLUGIN_MANUFACTURER_CODE Jokl`, `PLUGIN_CODE Bcue`, `IS_SYNTH FALSE`,
-     `VST3_CATEGORIES Fx Tools`, `COPY_PLUGIN_AFTER_BUILD` behind an option.
-   - Link `ZLIB::ZLIB` (system zlib; JUCE's own copy is namespaced, no clash).
-   - `PluginProcessor`: stereo/mono in = out, audio untouched. `processBlock`
-     only reads `getPlayHead()->getPosition()` into a `TransportState`
-     (ppq, bpm, time signature, isPlaying, isRecording, isLooping, loop points,
-     ppqPositionOfLastBarStart), runs `LoopCounter`, and calls
-     `SharedTransport::write`. No allocation, no locks.
-   - No automatable parameters; everything is state (see step 6).
-   - `.github/workflows/ci.yml`: harmeq's macOS job (universal build, ctest,
-     pluginval on the VST3) plus `auval -v aufx Bcue Jokl`.
+1. ~~Plugin scaffold~~ — done, see "Done" above.
 2. **Display** — `PrompterView` (one paint function taking `Song`,
    `TransportState`, `DisplaySettings`, so it can be rendered without a host)
    and `DisplayWindow` (a `DocumentWindow` owned by the *processor*, so it
