@@ -1,0 +1,514 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Ableton MajorVersion="5" MinorVersion="12.0_12049" Creator="Ableton Live 12.0.5">
+  <!-- synthetic fixture, see tools/make_fixtures.py -->
+  <LiveSet>
+    <NextPointeeId Value="1000" />
+    <Tracks>
+<MidiTrack Id="10">
+  <LomId Value="0" />
+  <Name>
+    <EffectiveName Value="length" />
+    <UserName Value="length" />
+    <Annotation Value="" />
+  </Name>
+  <Color Value="12" />
+  <TrackGroupId Value="-1" />
+  <TakeLanes>
+    <TakeLanes>
+      <TakeLane Id="0">
+        <Name Value="Take 1" />
+        <ClipAutomation><Events></Events></ClipAutomation>
+      </TakeLane>
+    </TakeLanes>
+  </TakeLanes>
+  <DeviceChain>
+    <Mixer>
+      <Name><EffectiveName Value="Mixer" /><UserName Value="parts" /></Name>
+      <Speaker><Manual Value="true" /></Speaker>
+    </Mixer>
+    <MainSequencer>
+      <ClipSlotList>
+        <ClipSlot Id="0"><ClipSlot><Value></Value></ClipSlot></ClipSlot>
+      </ClipSlotList>
+      <ClipTimeable>
+        <ArrangerAutomation>
+          <Events>
+<MidiClip Id="0" Time="0">
+  <LomId Value="0" />
+  <CurrentStart Value="0" />
+  <CurrentEnd Value="248" />
+  <Loop>
+    <LoopStart Value="0" />
+    <LoopEnd Value="248" />
+    <LoopOn Value="false" />
+  </Loop>
+  <Name Value="length" />
+  <Color Value="0" />
+  <Notes>
+    <KeyTracks>
+      <KeyTrack Id="0">
+        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
+        <MidiKey Value="60" />
+      </KeyTrack>
+    </KeyTracks>
+  </Notes>
+</MidiClip>
+          </Events>
+        </ArrangerAutomation>
+      </ClipTimeable>
+    </MainSequencer>
+    <DeviceChain>
+      <Devices>
+        <PluginDevice Id="0">
+          <Name><EffectiveName Value="parts" /><UserName Value="parts" /></Name>
+        </PluginDevice>
+      </Devices>
+    </DeviceChain>
+  </DeviceChain>
+</MidiTrack><MidiTrack Id="11">
+  <LomId Value="0" />
+  <Name>
+    <EffectiveName Value="Parts" />
+    <UserName Value="Parts" />
+    <Annotation Value="" />
+  </Name>
+  <Color Value="12" />
+  <TrackGroupId Value="-1" />
+  <TakeLanes>
+    <TakeLanes>
+      <TakeLane Id="0">
+        <Name Value="Take 1" />
+        <ClipAutomation><Events><MidiClip Id="91" Time="0">
+  <LomId Value="0" />
+  <CurrentStart Value="0" />
+  <CurrentEnd Value="16" />
+  <Loop>
+    <LoopStart Value="0" />
+    <LoopEnd Value="16" />
+    <LoopOn Value="false" />
+  </Loop>
+  <Name Value="LaneDecoy" />
+  <Color Value="91" />
+  <Notes>
+    <KeyTracks>
+      <KeyTrack Id="0">
+        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
+        <MidiKey Value="60" />
+      </KeyTrack>
+    </KeyTracks>
+  </Notes>
+</MidiClip></Events></ClipAutomation>
+      </TakeLane>
+    </TakeLanes>
+  </TakeLanes>
+  <DeviceChain>
+    <Mixer>
+      <Name><EffectiveName Value="Mixer" /><UserName Value="parts" /></Name>
+      <Speaker><Manual Value="true" /></Speaker>
+    </Mixer>
+    <MainSequencer>
+      <ClipSlotList>
+        <ClipSlot Id="0"><ClipSlot><Value><MidiClip Id="90" Time="0">
+  <LomId Value="0" />
+  <CurrentStart Value="0" />
+  <CurrentEnd Value="16" />
+  <Loop>
+    <LoopStart Value="0" />
+    <LoopEnd Value="16" />
+    <LoopOn Value="false" />
+  </Loop>
+  <Name Value="SessionDecoy" />
+  <Color Value="90" />
+  <Notes>
+    <KeyTracks>
+      <KeyTrack Id="0">
+        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
+        <MidiKey Value="60" />
+      </KeyTrack>
+    </KeyTracks>
+  </Notes>
+</MidiClip></Value></ClipSlot></ClipSlot>
+      </ClipSlotList>
+      <ClipTimeable>
+        <ArrangerAutomation>
+          <Events>
+<MidiClip Id="3" Time="80.0">
+  <LomId Value="0" />
+  <CurrentStart Value="80.0" />
+  <CurrentEnd Value="112.0" />
+  <Loop>
+    <LoopStart Value="0" />
+    <LoopEnd Value="32.0" />
+    <LoopOn Value="false" />
+  </Loop>
+  <Name Value="Verse 2" />
+  <Color Value="3" />
+  <Notes>
+    <KeyTracks>
+      <KeyTrack Id="0">
+        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
+        <MidiKey Value="60" />
+      </KeyTrack>
+    </KeyTracks>
+  </Notes>
+</MidiClip><MidiClip Id="4" Time="112.0">
+  <LomId Value="0" />
+  <CurrentStart Value="112.0" />
+  <CurrentEnd Value="144.0" />
+  <Loop>
+    <LoopStart Value="0" />
+    <LoopEnd Value="32.0" />
+    <LoopOn Value="false" />
+  </Loop>
+  <Name Value="Chorus" />
+  <Color Value="4" />
+  <Notes>
+    <KeyTracks>
+      <KeyTrack Id="0">
+        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
+        <MidiKey Value="60" />
+      </KeyTrack>
+    </KeyTracks>
+  </Notes>
+</MidiClip><MidiClip Id="5" Time="144.0">
+  <LomId Value="0" />
+  <CurrentStart Value="144.0" />
+  <CurrentEnd Value="162.0" />
+  <Loop>
+    <LoopStart Value="0" />
+    <LoopEnd Value="18.0" />
+    <LoopOn Value="false" />
+  </Loop>
+  <Name Value="Bridge &amp; &quot;Solo&quot;" />
+  <Color Value="5" />
+  <Notes>
+    <KeyTracks>
+      <KeyTrack Id="0">
+        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
+        <MidiKey Value="60" />
+      </KeyTrack>
+    </KeyTracks>
+  </Notes>
+</MidiClip><MidiClip Id="6" Time="162.0">
+  <LomId Value="0" />
+  <CurrentStart Value="162.0" />
+  <CurrentEnd Value="226.0" />
+  <Loop>
+    <LoopStart Value="0" />
+    <LoopEnd Value="64.0" />
+    <LoopOn Value="false" />
+  </Loop>
+  <Name Value="Chorus" />
+  <Color Value="6" />
+  <Notes>
+    <KeyTracks>
+      <KeyTrack Id="0">
+        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
+        <MidiKey Value="60" />
+      </KeyTrack>
+    </KeyTracks>
+  </Notes>
+</MidiClip><MidiClip Id="7" Time="234.0">
+  <LomId Value="0" />
+  <CurrentStart Value="234.0" />
+  <CurrentEnd Value="250.0" />
+  <Loop>
+    <LoopStart Value="0" />
+    <LoopEnd Value="16.0" />
+    <LoopOn Value="false" />
+  </Loop>
+  <Name Value="Outro" />
+  <Color Value="7" />
+  <Notes>
+    <KeyTracks>
+      <KeyTrack Id="0">
+        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
+        <MidiKey Value="60" />
+      </KeyTrack>
+    </KeyTracks>
+  </Notes>
+</MidiClip><MidiClip Id="0" Time="0.0">
+  <LomId Value="0" />
+  <CurrentStart Value="0.0" />
+  <CurrentEnd Value="16.0" />
+  <Loop>
+    <LoopStart Value="0" />
+    <LoopEnd Value="16.0" />
+    <LoopOn Value="false" />
+  </Loop>
+  <Name Value="Intro" />
+  <Color Value="0" />
+  <Notes>
+    <KeyTracks>
+      <KeyTrack Id="0">
+        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
+        <MidiKey Value="60" />
+      </KeyTrack>
+    </KeyTracks>
+  </Notes>
+</MidiClip><MidiClip Id="1" Time="16.0">
+  <LomId Value="0" />
+  <CurrentStart Value="16.0" />
+  <CurrentEnd Value="48.0" />
+  <Loop>
+    <LoopStart Value="0" />
+    <LoopEnd Value="32.0" />
+    <LoopOn Value="false" />
+  </Loop>
+  <Name Value="Verse 1" />
+  <Color Value="1" />
+  <Notes>
+    <KeyTracks>
+      <KeyTrack Id="0">
+        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
+        <MidiKey Value="60" />
+      </KeyTrack>
+    </KeyTracks>
+  </Notes>
+</MidiClip><MidiClip Id="2" Time="48.0">
+  <LomId Value="0" />
+  <CurrentStart Value="48.0" />
+  <CurrentEnd Value="80.0" />
+  <Loop>
+    <LoopStart Value="0" />
+    <LoopEnd Value="32.0" />
+    <LoopOn Value="false" />
+  </Loop>
+  <Name Value="Chorus" />
+  <Color Value="2" />
+  <Notes>
+    <KeyTracks>
+      <KeyTrack Id="0">
+        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
+        <MidiKey Value="60" />
+      </KeyTrack>
+    </KeyTracks>
+  </Notes>
+</MidiClip>
+          </Events>
+        </ArrangerAutomation>
+      </ClipTimeable>
+    </MainSequencer>
+    <DeviceChain>
+      <Devices>
+        <PluginDevice Id="0">
+          <Name><EffectiveName Value="parts" /><UserName Value="parts" /></Name>
+        </PluginDevice>
+      </Devices>
+    </DeviceChain>
+  </DeviceChain>
+</MidiTrack><GroupTrack Id="12">
+  <LomId Value="0" />
+  <Name>
+    <EffectiveName Value="Vocals" />
+    <UserName Value="Vocals" />
+    <Annotation Value="" />
+  </Name>
+  <Color Value="12" />
+  <TrackGroupId Value="-1" />
+  <TakeLanes>
+    <TakeLanes>
+      <TakeLane Id="0">
+        <Name Value="Take 1" />
+        <ClipAutomation><Events></Events></ClipAutomation>
+      </TakeLane>
+    </TakeLanes>
+  </TakeLanes>
+  <DeviceChain>
+    <Mixer>
+      <Name><EffectiveName Value="Mixer" /><UserName Value="parts" /></Name>
+      <Speaker><Manual Value="true" /></Speaker>
+    </Mixer>
+    <MainSequencer>
+      <ClipSlotList>
+        <ClipSlot Id="0"><ClipSlot><Value></Value></ClipSlot></ClipSlot>
+      </ClipSlotList>
+      <Sample>
+        <ArrangerAutomation>
+          <Events>
+
+          </Events>
+        </ArrangerAutomation>
+      </Sample>
+    </MainSequencer>
+    <DeviceChain>
+      <Devices>
+        <PluginDevice Id="0">
+          <Name><EffectiveName Value="parts" /><UserName Value="parts" /></Name>
+        </PluginDevice>
+      </Devices>
+    </DeviceChain>
+  </DeviceChain>
+</GroupTrack><AudioTrack Id="13">
+  <LomId Value="0" />
+  <Name>
+    <EffectiveName Value="Lead" />
+    <UserName Value="Lead" />
+    <Annotation Value="" />
+  </Name>
+  <Color Value="12" />
+  <TrackGroupId Value="12" />
+  <TakeLanes>
+    <TakeLanes>
+      <TakeLane Id="0">
+        <Name Value="Take 1" />
+        <ClipAutomation><Events></Events></ClipAutomation>
+      </TakeLane>
+    </TakeLanes>
+  </TakeLanes>
+  <DeviceChain>
+    <Mixer>
+      <Name><EffectiveName Value="Mixer" /><UserName Value="parts" /></Name>
+      <Speaker><Manual Value="true" /></Speaker>
+    </Mixer>
+    <MainSequencer>
+      <ClipSlotList>
+        <ClipSlot Id="0"><ClipSlot><Value></Value></ClipSlot></ClipSlot>
+      </ClipSlotList>
+      <Sample>
+        <ArrangerAutomation>
+          <Events>
+<AudioClip Id="0" Time="0">
+  <LomId Value="0" />
+  <CurrentStart Value="0" />
+  <CurrentEnd Value="32" />
+  <Loop>
+    <LoopStart Value="0" />
+    <LoopEnd Value="32" />
+    <LoopOn Value="false" />
+  </Loop>
+  <Name Value="AudioDecoy" />
+  <Color Value="0" />
+  <Notes>
+    <KeyTracks>
+      <KeyTrack Id="0">
+        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
+        <MidiKey Value="60" />
+      </KeyTrack>
+    </KeyTracks>
+  </Notes>
+</AudioClip>
+          </Events>
+        </ArrangerAutomation>
+      </Sample>
+    </MainSequencer>
+    <DeviceChain>
+      <Devices>
+        <PluginDevice Id="0">
+          <Name><EffectiveName Value="parts" /><UserName Value="parts" /></Name>
+        </PluginDevice>
+      </Devices>
+    </DeviceChain>
+  </DeviceChain>
+</AudioTrack><MidiTrack Id="14">
+  <LomId Value="0" />
+  <Name>
+    <EffectiveName Value="Keys" />
+    <UserName Value="Keys" />
+    <Annotation Value="" />
+  </Name>
+  <Color Value="12" />
+  <TrackGroupId Value="-1" />
+  <TakeLanes>
+    <TakeLanes>
+      <TakeLane Id="0">
+        <Name Value="Take 1" />
+        <ClipAutomation><Events></Events></ClipAutomation>
+      </TakeLane>
+    </TakeLanes>
+  </TakeLanes>
+  <DeviceChain>
+    <Mixer>
+      <Name><EffectiveName Value="Mixer" /><UserName Value="parts" /></Name>
+      <Speaker><Manual Value="true" /></Speaker>
+    </Mixer>
+    <MainSequencer>
+      <ClipSlotList>
+        <ClipSlot Id="0"><ClipSlot><Value></Value></ClipSlot></ClipSlot>
+      </ClipSlotList>
+      <ClipTimeable>
+        <ArrangerAutomation>
+          <Events>
+<MidiClip Id="0" Time="0">
+  <LomId Value="0" />
+  <CurrentStart Value="0" />
+  <CurrentEnd Value="64" />
+  <Loop>
+    <LoopStart Value="0" />
+    <LoopEnd Value="64" />
+    <LoopOn Value="false" />
+  </Loop>
+  <Name Value="KeysDecoy" />
+  <Color Value="0" />
+  <Notes>
+    <KeyTracks>
+      <KeyTrack Id="0">
+        <Notes><MidiNoteEvent Time="0" Duration="1" Velocity="100" /></Notes>
+        <MidiKey Value="60" />
+      </KeyTrack>
+    </KeyTracks>
+  </Notes>
+</MidiClip>
+          </Events>
+        </ArrangerAutomation>
+      </ClipTimeable>
+    </MainSequencer>
+    <DeviceChain>
+      <Devices>
+        <PluginDevice Id="0">
+          <Name><EffectiveName Value="parts" /><UserName Value="parts" /></Name>
+        </PluginDevice>
+      </Devices>
+    </DeviceChain>
+  </DeviceChain>
+</MidiTrack><ReturnTrack Id="15">
+  <LomId Value="0" />
+  <Name>
+    <EffectiveName Value="A-Reverb" />
+    <UserName Value="A-Reverb" />
+    <Annotation Value="" />
+  </Name>
+  <Color Value="12" />
+  <TrackGroupId Value="-1" />
+  <TakeLanes>
+    <TakeLanes>
+      <TakeLane Id="0">
+        <Name Value="Take 1" />
+        <ClipAutomation><Events></Events></ClipAutomation>
+      </TakeLane>
+    </TakeLanes>
+  </TakeLanes>
+  <DeviceChain>
+    <Mixer>
+      <Name><EffectiveName Value="Mixer" /><UserName Value="parts" /></Name>
+      <Speaker><Manual Value="true" /></Speaker>
+    </Mixer>
+    <MainSequencer>
+      <ClipSlotList>
+        <ClipSlot Id="0"><ClipSlot><Value></Value></ClipSlot></ClipSlot>
+      </ClipSlotList>
+      <Sample>
+        <ArrangerAutomation>
+          <Events>
+
+          </Events>
+        </ArrangerAutomation>
+      </Sample>
+    </MainSequencer>
+    <DeviceChain>
+      <Devices>
+        <PluginDevice Id="0">
+          <Name><EffectiveName Value="parts" /><UserName Value="parts" /></Name>
+        </PluginDevice>
+      </Devices>
+    </DeviceChain>
+  </DeviceChain>
+</ReturnTrack>
+    </Tracks>
+    <MainTrack>
+      <Name><EffectiveName Value="Main" /><UserName Value="" /></Name>
+      <DeviceChain><Mixer><Tempo><Manual Value="96" /></Tempo></Mixer></DeviceChain>
+    </MainTrack>
+    <Scenes />
+  </LiveSet>
+</Ableton>
