@@ -27,6 +27,18 @@ namespace
     const juce::Identifier kStart    { "start" };
     const juce::Identifier kEnd      { "end" };
 
+    // <Lyrics>
+    //   <Block header="Chorus"><Line text="Hold on" offset="2.5"/> … </Block> …
+    // </Lyrics>                    offset: beats into the section, -1 = not tapped
+    const juce::Identifier kLyrics   { "Lyrics" };
+    const juce::Identifier kBlock    { "Block" };
+    const juce::Identifier kHeader   { "header" };
+    const juce::Identifier kLine     { "Line" };
+    const juce::Identifier kText     { "text" };
+    const juce::Identifier kOffset   { "offset" };
+
+    juce::String str (const std::string& s) { return juce::String::fromUTF8 (s.c_str()); }
+
     constexpr int kTimerHz = 10;
 }
 
@@ -223,6 +235,15 @@ void BoothCueAudioProcessor::setSong (Song newSong)
     JUCE_ASSERT_MESSAGE_THREAD
     song = std::move (newSong);
     ++contentVersion;
+    updateStateSnapshot();
+}
+
+void BoothCueAudioProcessor::setLyrics (std::vector<LyricBlock> blocks)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    song.setBlocks (std::move (blocks));
+    ++contentVersion;
+    updateStateSnapshot();
 }
 
 void BoothCueAudioProcessor::setDisplaySettings (const DisplaySettings& s)
@@ -277,8 +298,8 @@ juce::AudioProcessorEditor* BoothCueAudioProcessor::createEditor()
 }
 
 // ---- state --------------------------------------------------------------------------
-// The linked set and the last structure read from it. Lyrics, timings and
-// display settings are added in TODO step 6.
+// The linked set, the last structure read from it, and the lyrics with their
+// timings. Display settings and the display window are added in TODO step 6.
 
 void BoothCueAudioProcessor::updateStateSnapshot()
 {
@@ -300,6 +321,25 @@ void BoothCueAudioProcessor::updateStateSnapshot()
             set.appendChild (t, nullptr);
         }
         state.appendChild (set, nullptr);
+    }
+
+    if (! song.blocks().empty())
+    {
+        juce::ValueTree lyrics (kLyrics);
+        for (const auto& b : song.blocks())
+        {
+            juce::ValueTree block (kBlock);
+            block.setProperty (kHeader, str (b.header), nullptr);
+            for (const auto& l : b.lines)
+            {
+                juce::ValueTree line (kLine);
+                line.setProperty (kText, str (l.text), nullptr);
+                line.setProperty (kOffset, l.offset, nullptr);
+                block.appendChild (line, nullptr);
+            }
+            lyrics.appendChild (block, nullptr);
+        }
+        state.appendChild (lyrics, nullptr);
     }
 
     const juce::ScopedLock sl (stateLock);
@@ -345,6 +385,21 @@ void BoothCueAudioProcessor::applyState (const juce::ValueTree& state)
         if (t.hasType (kSection))
             sections.push_back ({ t[kName].toString().toStdString(),
                                   static_cast<double> (t[kStart]), static_cast<double> (t[kEnd]) });
+
+    std::vector<LyricBlock> blocks;
+    for (const auto& b : state.getChildWithName (kLyrics))
+    {
+        if (! b.hasType (kBlock))
+            continue;
+        LyricBlock block;
+        block.header = b[kHeader].toString().toStdString();
+        for (const auto& l : b)
+            if (l.hasType (kLine))
+                block.lines.push_back ({ l[kText].toString().toStdString(),
+                                         l.hasProperty (kOffset) ? static_cast<double> (l[kOffset]) : -1.0 });
+        blocks.push_back (std::move (block));
+    }
+    song.setBlocks (std::move (blocks));
 
     // Show the saved structure at once; the watcher re-reads the file (if it
     // is there) and replaces it.

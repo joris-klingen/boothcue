@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 
+#include "LyricImport.h"
 #include "Song.h"
 #include "Theme.h"
 
@@ -9,25 +10,173 @@ namespace boothcue
 namespace
 {
     juce::String beats (double ppq) { return juce::String (ppq, 2); }
+    juce::String str (const std::string& s) { return juce::String::fromUTF8 (s.c_str()); }
 
     juce::Font font (float height, bool bold = false)
     {
         return juce::Font (juce::FontOptions (height, bold ? juce::Font::bold : juce::Font::plain));
     }
+
+    void sectionTitle (juce::Graphics& g, juce::Rectangle<int> area, const juce::String& text)
+    {
+        g.setColour (theme::dim);
+        g.setFont (font (12.0f, true));
+        g.drawText (text.toUpperCase(), area, juce::Justification::bottomLeft);
+    }
+
+    // Count-in choices: { enabled, bars announced }.
+    struct CountChoice { const char* name; bool enabled; int bars; };
+    const CountChoice kCountChoices[] = {
+        { "Off", false, 0 },
+        { "Last bar only (4-3-2-1)", true, 0 },
+        { "1 bar, then 4-3-2-1", true, 1 },
+        { "2 bars, then 4-3-2-1", true, 2 },
+        { "4 bars, then 4-3-2-1", true, 4 },
+    };
+    const double kEntryChoices[] = { 1.0, 2.0, 4.0, 8.0 };
+
+    constexpr int kLeftWidth = 330;
 }
+
+// ---- line list ----------------------------------------------------------------------------
+
+void BoothCueAudioProcessorEditor::LineList::rebuild()
+{
+    rows.clear();
+    const auto& song = processor.getSong();
+
+    // Sections that no block links to: usually a header typo.
+    if (! song.blocks().empty())
+    {
+        juce::StringArray missing;
+        for (std::size_t i = 0; i < song.sections().size(); ++i)
+            if (song.blockForSection (static_cast<int> (i)) < 0)
+                missing.addIfNotAlreadyThere (str (song.sections()[i].name));
+        if (! missing.isEmpty())
+            rows.push_back ({ Row::Kind::note, -1, -1, "No lyrics for: " + missing.joinIntoString (", ") });
+    }
+
+    for (std::size_t b = 0; b < song.blocks().size(); ++b)
+    {
+        rows.push_back ({ Row::Kind::header, static_cast<int> (b), -1, {} });
+        for (std::size_t l = 0; l < song.blocks()[b].lines.size(); ++l)
+            rows.push_back ({ Row::Kind::line, static_cast<int> (b), static_cast<int> (l), {} });
+    }
+}
+
+int BoothCueAudioProcessorEditor::LineList::rowFor (int block, int line) const
+{
+    for (std::size_t i = 0; i < rows.size(); ++i)
+        if (rows[i].kind == Row::Kind::line && rows[i].block == block && rows[i].line == line)
+            return static_cast<int> (i);
+    return -1;
+}
+
+juce::String BoothCueAudioProcessorEditor::LineList::position (double ppq) const
+{
+    // Live's bar.beat.sixteenth, in the host's time signature.
+    const auto t = processor.getTransport();
+    const TimeSig sig { t.sigNum > 0 ? t.sigNum : 4, t.sigDen > 0 ? t.sigDen : 4 };
+    const auto bb = barBeatAt (ppq, sig);
+    const double beatStart = std::floor (ppq / sig.barLength()) * sig.barLength() + (bb.beat - 1) * sig.beatLength();
+    const int sixteenth = juce::jlimit (1, 4, 1 + static_cast<int> (std::floor ((ppq - beatStart) / (sig.beatLength() / 4.0) + 1.0e-6)));
+    return juce::String (bb.bar) + "." + juce::String (bb.beat) + "." + juce::String (sixteenth);
+}
+
+void BoothCueAudioProcessorEditor::LineList::paintListBoxItem (int index, juce::Graphics& g, int width, int height,
+                                                               bool selected)
+{
+    if (index < 0 || index >= static_cast<int> (rows.size()))
+        return;
+    const auto& row = rows[static_cast<std::size_t> (index)];
+    const auto& song = processor.getSong();
+    auto area = juce::Rectangle<int> (0, 0, width, height).reduced (8, 0);
+
+    if (row.kind == Row::Kind::note)
+    {
+        g.setColour (theme::loop);
+        g.setFont (font (13.0f));
+        g.drawText (row.text, area, juce::Justification::centredLeft, true);
+        return;
+    }
+
+    if (row.kind == Row::Kind::header)
+    {
+        const auto& block = song.blocks()[static_cast<std::size_t> (row.block)];
+        g.setColour (theme::sectionFuture.withAlpha (0.6f));
+        g.fillRect (0, 0, width, height);
+
+        g.setFont (font (14.0f, true));
+        const auto header = block.header.empty() ? juce::String ("(no header)") : "[" + str (block.header) + "]";
+        g.setColour (theme::text);
+        const int w = juce::roundToInt (juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), header)) + 12;
+        g.drawText (header, area.removeFromLeft (w), juce::Justification::centredLeft, false);
+
+        juce::StringArray where;
+        for (std::size_t i = 0; i < song.sections().size(); ++i)
+            if (song.blockForSection (static_cast<int> (i)) == row.block)
+                where.add (str (song.sections()[i].name) + " (bar " + juce::String (barBeatAt (song.sections()[i].start, {}).bar) + ")");
+
+        g.setFont (font (13.0f));
+        if (where.isEmpty())
+        {
+            g.setColour (theme::loop);
+            g.drawText (song.sections().empty() ? juce::String ("not linked yet: link a Live set")
+                        : block.header.empty() ? juce::String ("not linked: lines before the first [header]")
+                                               : "not linked: no section named \"" + str (block.header) + "\"",
+                        area, juce::Justification::centredLeft, true);
+        }
+        else
+        {
+            g.setColour (theme::dim);
+            g.drawText ("-> " + where.joinIntoString (", "), area, juce::Justification::centredLeft, true);
+        }
+        return;
+    }
+
+    // A lyric line: its start (tapped, or "~" for the even spread) and its text.
+    const bool sung = row.block == sungBlock && row.line == sungLine;
+    if (sung)
+    {
+        g.setColour (theme::sectionNow.withAlpha (0.35f));
+        g.fillRect (0, 0, width, height);
+    }
+    if (selected)
+    {
+        g.setColour (theme::text.withAlpha (0.12f));
+        g.fillRect (0, 0, width, height);
+    }
+
+    const auto& line = song.blocks()[static_cast<std::size_t> (row.block)].lines[static_cast<std::size_t> (row.line)];
+    const int section = song.firstSectionForBlock (row.block);
+    auto posArea = area.removeFromLeft (84);
+    if (section >= 0)
+    {
+        const double ppq = song.sections()[static_cast<std::size_t> (section)].start + song.resolvedOffset (row.block, row.line);
+        g.setFont (font (13.0f, line.timed()));
+        g.setColour (line.timed() ? theme::count : theme::dim);
+        g.drawText ((line.timed() ? "" : "~ ") + position (ppq), posArea, juce::Justification::centredLeft, false);
+    }
+    g.setFont (font (14.0f));
+    g.setColour (sung ? theme::text : theme::text.withAlpha (0.85f));
+    g.drawText (str (line.text), area, juce::Justification::centredLeft, true);
+}
+
+// ---- editor -----------------------------------------------------------------------------------
 
 BoothCueAudioProcessorEditor::BoothCueAudioProcessorEditor (BoothCueAudioProcessor& p)
     : AudioProcessorEditor (p), processor (p)
 {
+    // Set.
     linkButton.onClick = [this] { chooseSet(); };
     reloadButton.onClick = [this] { processor.reloadSet(); };
     unlinkButton.onClick = [this] { processor.unlinkSet(); };
     linkButton.setTooltip ("Pick this song's Live set (.als). BoothCue reads the sections from its \"parts\" "
                            "track and reads them again every time the set is saved.");
-    addAndMakeVisible (linkButton);
-    addAndMakeVisible (reloadButton);
-    addAndMakeVisible (unlinkButton);
+    for (auto* b : { &linkButton, &reloadButton, &unlinkButton })
+        addAndMakeVisible (*b);
 
+    // Display.
     displayButton.onClick = [this]
     {
         if (processor.isDisplayVisible())
@@ -48,17 +197,65 @@ BoothCueAudioProcessorEditor::BoothCueAudioProcessorEditor (BoothCueAudioProcess
     showBass.setTooltip ("Shown once chord detection is built (see TODO.md)");
 
     sizeSlider.setSliderStyle (juce::Slider::LinearHorizontal);
-    sizeSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 20);
+    sizeSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 20);
     sizeSlider.setRange (0.5, 2.0, 0.05);
     sizeSlider.textFromValueFunction = [] (double v) { return juce::String (juce::roundToInt (v * 100)) + "%"; };
     sizeSlider.valueFromTextFunction = [] (const juce::String& t) { return t.getDoubleValue() / 100.0; };
     sizeSlider.onValueChange = [this] { pushSettings(); };
-    sizeLabel.setColour (juce::Label::textColourId, theme::dim);
-    addAndMakeVisible (sizeLabel);
-    addAndMakeVisible (sizeSlider);
 
+    int id = 1;
+    for (const auto& c : kCountChoices)
+        countBox.addItem (c.name, id++);
+    countBox.onChange = [this] { pushSettings(); };
+    for (const auto bars : kEntryChoices)
+        entryBox.addItem (juce::String (static_cast<int> (bars)) + (bars > 1.0 ? " bars" : " bar"),
+                          static_cast<int> (bars));
+    entryBox.setTooltip ("Only lines that come after a rest at least this long get a count-in");
+    entryBox.onChange = [this] { pushSettings(); };
+
+    for (auto* l : { &sizeLabel, &countLabel, &entryLabel })
+    {
+        l->setColour (juce::Label::textColourId, theme::dim);
+        addAndMakeVisible (*l);
+    }
+    addAndMakeVisible (sizeSlider);
+    addAndMakeVisible (countBox);
+    addAndMakeVisible (entryBox);
+
+    // Lyrics.
+    lyricsEditor.setMultiLine (true, true);
+    lyricsEditor.setReturnKeyStartsNewLine (true);
+    lyricsEditor.setTabKeyUsedAsCharacter (false);
+    lyricsEditor.setScrollbarsShown (true);
+    lyricsEditor.setFont (font (15.0f));
+    lyricsEditor.setColour (juce::TextEditor::backgroundColourId, theme::sectionPast);
+    lyricsEditor.setColour (juce::TextEditor::textColourId, theme::text);
+    lyricsEditor.setColour (juce::TextEditor::outlineColourId, theme::faint);
+    lyricsEditor.setTextToShowWhenEmpty ("Paste the lyrics here, with a [Section] header above each part:\n\n"
+                                         "[Verse 1]\nFirst line\nSecond line\n\n[Chorus]\n...",
+                                         theme::dim);
+    lyricsEditor.onTextChange = [this] { updateLyricButtons(); };
+    addAndMakeVisible (lyricsEditor);
+
+    loadButton.onClick = [this] { loadLyricsFile(); };
+    applyButton.onClick = [this] { applyLyrics(); };
+    revertButton.onClick = [this] { revertLyrics(); };
+    applyButton.setTooltip ("Use this text. Lines you didn't change keep their timing.");
+    for (auto* b : { &loadButton, &applyButton, &revertButton })
+        addAndMakeVisible (*b);
+
+    lineList.setRowHeight (26);
+    lineList.setColour (juce::ListBox::backgroundColourId, theme::background);
+    lineList.setColour (juce::ListBox::outlineColourId, theme::faint);
+    lineList.setOutlineThickness (1);
+    addAndMakeVisible (lineList);
+
+    revertLyrics();   // the song's lyrics into the text box
     pullSettings();
-    setSize (560, 480);
+
+    setResizable (true, true);
+    setResizeLimits (820, 560, 2400, 1600);
+    setSize (1000, 660);
     startTimerHz (30);
     timerCallback();
 }
@@ -68,6 +265,8 @@ BoothCueAudioProcessorEditor::~BoothCueAudioProcessorEditor()
     stopTimer();
 }
 
+// ---- settings ------------------------------------------------------------------------------
+
 void BoothCueAudioProcessorEditor::pullSettings()
 {
     const auto& s = processor.getDisplaySettings();
@@ -76,6 +275,21 @@ void BoothCueAudioProcessorEditor::pullSettings()
     showChords.setToggleState (s.showChords, juce::dontSendNotification);
     showBass.setToggleState (s.showBassNote, juce::dontSendNotification);
     sizeSlider.setValue (s.fontScale, juce::dontSendNotification);
+
+    int countId = 1;
+    for (int i = 0; i < static_cast<int> (std::size (kCountChoices)); ++i)
+    {
+        const auto& c = kCountChoices[i];
+        if (c.enabled == s.count.enabled && (! c.enabled || c.bars == s.count.countInBars))
+            countId = i + 1;
+    }
+    countBox.setSelectedId (countId, juce::dontSendNotification);
+
+    int entryId = static_cast<int> (kEntryChoices[0]);
+    for (const auto bars : kEntryChoices)
+        if (s.count.entryGapBars >= bars - 1.0e-6)
+            entryId = static_cast<int> (bars);
+    entryBox.setSelectedId (entryId, juce::dontSendNotification);
 }
 
 void BoothCueAudioProcessorEditor::pushSettings()
@@ -86,8 +300,21 @@ void BoothCueAudioProcessorEditor::pushSettings()
     s.showChords   = showChords.getToggleState();
     s.showBassNote = showBass.getToggleState();
     s.fontScale    = static_cast<float> (sizeSlider.getValue());
+
+    const int countIndex = countBox.getSelectedId() - 1;
+    if (countIndex >= 0 && countIndex < static_cast<int> (std::size (kCountChoices)))
+    {
+        s.count.enabled     = kCountChoices[countIndex].enabled;
+        s.count.countInBars = kCountChoices[countIndex].bars;
+    }
+    if (entryBox.getSelectedId() > 0)
+        s.count.entryGapBars = entryBox.getSelectedId();
+
+    entryBox.setEnabled (s.count.enabled);
     processor.setDisplaySettings (s);
 }
+
+// ---- set --------------------------------------------------------------------------------------
 
 void BoothCueAudioProcessorEditor::chooseSet()
 {
@@ -144,38 +371,113 @@ juce::String BoothCueAudioProcessorEditor::linkText (juce::Colour& colour) const
     return {};
 }
 
+// ---- lyrics -----------------------------------------------------------------------------------
+
+void BoothCueAudioProcessorEditor::loadLyricsFile()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Load lyrics (plain text, [Section] headers)",
+                                                   processor.getLinkStatus().file.getParentDirectory(),
+                                                   "*.txt;*.text;*.md");
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                          [this] (const juce::FileChooser& fc)
+                          {
+                              const auto file = fc.getResult();
+                              if (! file.existsAsFile())
+                                  return;
+                              lyricsEditor.setText (file.loadFileAsString(), false);
+                              applyLyrics();
+                          });
+}
+
+void BoothCueAudioProcessorEditor::applyLyrics()
+{
+    const auto text = lyricsEditor.getText();
+    auto blocks = parseLyrics (text.toStdString());
+    keepTimings (processor.getSong().blocks(), blocks);
+    processor.setLyrics (std::move (blocks));
+    appliedText = text;
+    shownBlocksText = str (lyricsToText (processor.getSong().blocks()));
+    updateLyricButtons();
+}
+
+void BoothCueAudioProcessorEditor::revertLyrics()
+{
+    shownBlocksText = str (lyricsToText (processor.getSong().blocks()));
+    lyricsEditor.setText (shownBlocksText, false);
+    appliedText = shownBlocksText;
+    updateLyricButtons();
+}
+
+void BoothCueAudioProcessorEditor::updateLyricButtons()
+{
+    const bool dirty = lyricsEditor.getText() != appliedText;
+    applyButton.setEnabled (dirty);
+    revertButton.setEnabled (dirty);
+    repaint (lyricsTitle);
+}
+
+// ---- layout & paint ---------------------------------------------------------------------------
+
 void BoothCueAudioProcessorEditor::resized()
 {
     auto area = getLocalBounds().reduced (20);
-    area.removeFromTop (66);   // title
 
-    auto links = area.removeFromTop (30);
-    linkButton.setBounds (links.removeFromLeft (120));
+    // Left column.
+    leftColumn = area.removeFromLeft (kLeftWidth);
+    area.removeFromLeft (24);
+    auto left = leftColumn;
+    left.removeFromTop (66);   // title
+
+    left.removeFromTop (22);   // "Live set"
+    auto links = left.removeFromTop (28);
+    linkButton.setBounds (links.removeFromLeft (110));
     links.removeFromLeft (8);
     reloadButton.setBounds (links.removeFromLeft (80));
     links.removeFromLeft (8);
     unlinkButton.setBounds (links.removeFromLeft (80));
-    linkArea = area.removeFromTop (48).withTrimmedTop (6);
-    area.removeFromTop (10);
+    linkArea = left.removeFromTop (60).withTrimmedTop (6);
 
-    auto row = area.removeFromTop (32);
-    displayButton.setBounds (row.removeFromLeft (220));
-    area.removeFromTop (14);
-
-    auto toggles = area.removeFromTop (52);
-    auto left = toggles.removeFromLeft (toggles.getWidth() / 2);
-    showPart.setBounds (left.removeFromTop (26));
-    showLyrics.setBounds (left);
-    showChords.setBounds (toggles.removeFromTop (26));
+    left.removeFromTop (22);   // "Singer display"
+    displayButton.setBounds (left.removeFromTop (30).removeFromLeft (220));
+    left.removeFromTop (8);
+    auto toggles = left.removeFromTop (48);
+    auto toggleLeft = toggles.removeFromLeft (toggles.getWidth() / 2 - 20);
+    showPart.setBounds (toggleLeft.removeFromTop (24));
+    showLyrics.setBounds (toggleLeft);
+    showChords.setBounds (toggles.removeFromTop (24));
     showBass.setBounds (toggles);
-    area.removeFromTop (8);
+    left.removeFromTop (6);
 
-    auto size = area.removeFromTop (26);
+    auto size = left.removeFromTop (26);
     sizeLabel.setBounds (size.removeFromLeft (80));
     sizeSlider.setBounds (size);
-    area.removeFromTop (16);
+    left.removeFromTop (6);
+    auto count = left.removeFromTop (26);
+    countLabel.setBounds (count.removeFromLeft (80));
+    countBox.setBounds (count);
+    left.removeFromTop (6);
+    auto entry = left.removeFromTop (26);
+    entryLabel.setBounds (entry.removeFromLeft (180));
+    entryBox.setBounds (entry);
+    left.removeFromTop (14);
 
-    readoutArea = area;
+    readoutArea = left;
+
+    // Right column: lyrics text over the line list.
+    lyricsTitle = area.removeFromTop (28);
+    auto buttons = lyricsTitle;
+    revertButton.setBounds (buttons.removeFromRight (80).reduced (0, 1));
+    buttons.removeFromRight (8);
+    applyButton.setBounds (buttons.removeFromRight (80).reduced (0, 1));
+    buttons.removeFromRight (8);
+    loadButton.setBounds (buttons.removeFromRight (110).reduced (0, 1));
+    area.removeFromTop (6);
+
+    lyricsEditor.setBounds (area.removeFromTop (juce::jmax (160, area.getHeight() * 2 / 5)));
+    area.removeFromTop (10);
+    linesTitle = area.removeFromTop (24);
+    area.removeFromTop (4);
+    lineList.setBounds (area);
 }
 
 void BoothCueAudioProcessorEditor::timerCallback()
@@ -185,12 +487,42 @@ void BoothCueAudioProcessorEditor::timerCallback()
     reloadButton.setEnabled (linked);
     unlinkButton.setEnabled (linked || ! processor.getSong().sections().empty());
 
+    const auto& song = processor.getSong();
     if (processor.getContentVersion() != shownVersion)
     {
         shownVersion = processor.getContentVersion();
+
+        // Lyrics changed elsewhere (state restored, a tap): follow, unless the
+        // text box holds edits not applied yet.
+        const auto blocksText = str (lyricsToText (song.blocks()));
+        if (blocksText != shownBlocksText && lyricsEditor.getText() == appliedText)
+            revertLyrics();
+
+        lineModel.rebuild();
+        lineList.updateContent();
+        lineList.repaint();
         repaint (linkArea);
     }
+
     shown = processor.getTransport();
+
+    // Highlight the line being sung.
+    int block = -1, line = -1;
+    if (shown.valid)
+        if (const int cue = song.cueAt (shown.ppq); cue >= 0)
+        {
+            block = song.cues()[static_cast<std::size_t> (cue)].block;
+            line  = song.cues()[static_cast<std::size_t> (cue)].line;
+        }
+    if (block != lineModel.sungBlock || line != lineModel.sungLine)
+    {
+        lineModel.sungBlock = block;
+        lineModel.sungLine  = line;
+        lineList.repaint();
+        if (shown.playing && block >= 0)
+            lineList.scrollToEnsureRowIsOnscreen (lineModel.rowFor (block, line));
+    }
+
     repaint (readoutArea);
 }
 
@@ -198,21 +530,37 @@ void BoothCueAudioProcessorEditor::paint (juce::Graphics& g)
 {
     g.fillAll (theme::background);
 
-    auto title = getLocalBounds().reduced (20).removeFromTop (56);
+    auto title = leftColumn.withHeight (66);
     g.setColour (theme::text);
     g.setFont (font (24.0f, true));
     g.drawText ("BoothCue", title.removeFromTop (30), juce::Justification::centredLeft);
     g.setColour (theme::dim);
     g.setFont (font (13.0f));
-    g.drawText ("v" JucePlugin_VersionString "  -  in the display: F = full screen, Esc = leave it",
-                title, juce::Justification::centredLeft);
+    g.drawText ("v" JucePlugin_VersionString "  -  display: F = full screen, Esc = leave it",
+                title.removeFromTop (20), juce::Justification::centredLeft);
+
+    sectionTitle (g, { leftColumn.getX(), leftColumn.getY() + 66, leftColumn.getWidth(), 18 }, "Live set");
+    sectionTitle (g, { leftColumn.getX(), linkArea.getBottom(), leftColumn.getWidth(), 18 }, "Singer display");
+
+    // Lyrics title, with a hint when the text box holds unapplied edits.
+    {
+        auto t = lyricsTitle;
+        sectionTitle (g, t.removeFromLeft (80).withTrimmedBottom (6), "Lyrics");
+        if (lyricsEditor.getText() != appliedText)
+        {
+            g.setColour (theme::loop);
+            g.setFont (font (12.5f));
+            g.drawText ("not applied yet", t.withTrimmedBottom (6), juce::Justification::bottomLeft);
+        }
+    }
+    sectionTitle (g, linesTitle, "Lines");
 
     // The linked set.
     juce::Colour linkColour;
-    g.setFont (font (13.5f));
+    g.setFont (font (13.0f));
     const auto status = linkText (linkColour);
     g.setColour (linkColour);
-    g.drawFittedText (status, linkArea, juce::Justification::topLeft, 3, 1.0f);
+    g.drawFittedText (status, linkArea, juce::Justification::topLeft, 4, 1.0f);
 
     // Transport readout, to check the host connection.
     auto area = readoutArea;
@@ -223,42 +571,42 @@ void BoothCueAudioProcessorEditor::paint (juce::Graphics& g)
     if (! shown.valid)
     {
         g.setColour (theme::dim);
-        g.setFont (font (15.0f));
-        g.drawText ("No host position (start the transport, or this is the Standalone)",
-                    area.removeFromTop (24), juce::Justification::centredLeft);
+        g.setFont (font (13.0f));
+        g.drawFittedText ("No host position (start the transport, or this is the Standalone)",
+                          area.removeFromTop (40), juce::Justification::topLeft, 2);
         return;
     }
 
     const TimeSig sig { shown.sigNum, shown.sigDen };
     const auto bb = barBeatAt (shown.ppq, sig, shown.hasLastBarStart, shown.lastBarStart);
 
-    auto line = area.removeFromTop (34);
+    auto line = area.removeFromTop (30);
     g.setColour (theme::text);
-    g.setFont (font (28.0f, true));
-    g.drawText (juce::String (bb.bar) + "." + juce::String (bb.beat), line.removeFromLeft (110),
+    g.setFont (font (24.0f, true));
+    g.drawText (juce::String (bb.bar) + "." + juce::String (bb.beat), line.removeFromLeft (90),
                 juce::Justification::centredLeft);
 
     auto tag = [&g, &line] (const juce::String& text, juce::Colour colour, bool on)
     {
         g.setColour (on ? colour : theme::dim.withAlpha (0.4f));
-        g.setFont (font (14.0f, true));
-        g.drawText (text, line.removeFromLeft (90), juce::Justification::centredLeft);
+        g.setFont (font (12.0f, true));
+        g.drawText (text, line.removeFromLeft (76), juce::Justification::centredLeft);
     };
     tag (shown.playing ? "PLAYING" : "STOPPED", theme::play, shown.playing);
     tag ("REC", theme::record, shown.recording);
     tag (shown.looping ? "LOOP" : "LOOP OFF", theme::loop, shown.looping);
 
-    g.setFont (font (14.0f));
+    g.setFont (font (12.5f));
     g.setColour (theme::dim);
-    auto text = "beat " + beats (shown.ppq) + "   " + juce::String (shown.bpm, 1) + " BPM   "
-                + juce::String (shown.sigNum) + "/" + juce::String (shown.sigDen);
+    auto text = juce::String (shown.bpm, 1) + " BPM  " + juce::String (shown.sigNum) + "/" + juce::String (shown.sigDen)
+                + "  beat " + beats (shown.ppq);
     if (shown.loopEnd > shown.loopStart)
     {
-        text << "   loop " << beats (shown.loopStart) << " - " << beats (shown.loopEnd);
+        text << "\nloop " << beats (shown.loopStart) << " - " << beats (shown.loopEnd);
         if (shown.loopPass > 0)
             text << "  pass " << shown.loopPass;
     }
-    g.drawText (text, area.removeFromTop (22), juce::Justification::centredLeft);
+    g.drawFittedText (text, area.removeFromTop (36), juce::Justification::topLeft, 2);
 }
 
 }  // namespace boothcue

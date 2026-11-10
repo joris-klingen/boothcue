@@ -78,6 +78,8 @@ public:
     // ---- message thread ------------------------------------------------------
     const Song& getSong() const noexcept                                { return song; }
     void setSong (Song);
+    // New lyric blocks (with their timings) for the current structure.
+    void setLyrics (std::vector<LyricBlock>);
 
     const DisplaySettings& getDisplaySettings() const noexcept          { return displaySettings; }
     void setDisplaySettings (const DisplaySettings&);

@@ -1,5 +1,6 @@
 #include "LyricImport.h"
 
+#include <algorithm>
 #include <map>
 
 namespace boothcue
@@ -91,11 +92,25 @@ void keepTimings (const std::vector<LyricBlock>& previous, std::vector<LyricBloc
         {
             if (oldIds[o] != newIds[n])
                 continue;
+
+            // Pair the lines up by the longest common subsequence of their
+            // texts, so inserting, deleting or changing one line keeps the
+            // timing of every other line (and the order of the taps).
             auto& lines = edited[n].lines;
             const auto& old = previous[o].lines;
-            for (std::size_t l = 0; l < lines.size() && l < old.size(); ++l)
-                if (lines[l].text == old[l].text)
-                    lines[l].offset = old[l].offset;
+            const auto a = old.size(), b = lines.size();
+            std::vector<std::vector<int>> lcs (a + 1, std::vector<int> (b + 1, 0));
+            for (std::size_t i = a; i-- > 0;)
+                for (std::size_t j = b; j-- > 0;)
+                    lcs[i][j] = old[i].text == lines[j].text ? lcs[i + 1][j + 1] + 1
+                                                             : std::max (lcs[i + 1][j], lcs[i][j + 1]);
+            std::size_t i = 0, j = 0;
+            while (i < a && j < b)
+            {
+                if (old[i].text == lines[j].text)       { lines[j].offset = old[i].offset; ++i; ++j; }
+                else if (lcs[i + 1][j] >= lcs[i][j + 1]) ++i;
+                else                                     ++j;
+            }
             break;
         }
 }

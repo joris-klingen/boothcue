@@ -104,6 +104,24 @@ namespace
         EXPECT (near (edited[3].lines[1].offset, 4.0));
         EXPECT (! edited[3].lines[2].timed());
 
+        // Inserting, removing and changing lines keeps the other lines' taps.
+        auto taps = parseLyrics ("[Verse]\none\ntwo\nthree\nfour\n");
+        for (std::size_t l = 0; l < 4; ++l)
+            taps[0].lines[l].offset = static_cast<double> (l) * 4.0;
+        auto moved = parseLyrics ("[Verse]\nnew first\none\nthree\nfour (changed)\nfour\n");
+        keepTimings (taps, moved);
+        EXPECT (! moved[0].lines[0].timed());
+        EXPECT (near (moved[0].lines[1].offset, 0));    // one
+        EXPECT (near (moved[0].lines[2].offset, 8));    // three (two was removed)
+        EXPECT (! moved[0].lines[3].timed());
+        EXPECT (near (moved[0].lines[4].offset, 12));   // four
+        // A repeated line pairs up in order.
+        auto rep = parseLyrics ("[C]\nla\nla\n");
+        rep[0].lines[0].offset = 1; rep[0].lines[1].offset = 2;
+        auto rep2 = parseLyrics ("[C]\nla\nx\nla\n");
+        keepTimings (rep, rep2);
+        EXPECT (near (rep2[0].lines[0].offset, 1) && ! rep2[0].lines[1].timed() && near (rep2[0].lines[2].offset, 2));
+
         EXPECT (nameKey (" Verse-1 ") == "verse1");
         EXPECT (nameKey ("PRE CHORUS") == nameKey ("Pre-Chorus"));
         EXPECT (nameKey ("[]") .empty());

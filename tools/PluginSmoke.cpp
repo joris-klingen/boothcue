@@ -14,6 +14,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "LyricImport.h"
 #include "PluginProcessor.h"
 
 #include <cmath>
@@ -165,6 +166,31 @@ namespace
             EXPECT (q.getLinkStatus().file == set);
         }
 
+        // Lyrics and their taps travel with the state.
+        {
+            auto blocks = parseLyrics ("[Verse 1]\nfirst line\nsecond line\n[Chorus]\nhold on\n");
+            blocks[0].lines[1].offset = 9.5;
+            p.setLyrics (blocks);
+            EXPECT (p.getSong().blocks().size() == 2);
+            EXPECT (p.getSong().cues().size() == 2 + 3);   // the chorus is sung three times
+            const auto savedLyrics = stateOf (p);
+            BoothCueAudioProcessor q;
+            q.setStateInformation (savedLyrics.getData(), static_cast<int> (savedLyrics.getSize()));
+            const auto& b = q.getSong().blocks();
+            EXPECT (b.size() == 2 && b[0].header == "Verse 1" && b[1].lines.size() == 1);
+            EXPECT (b.size() == 2 && ! b[0].lines[0].timed() && std::abs (b[0].lines[1].offset - 9.5) < 1e-9);
+            EXPECT (q.getSong().cues().size() == 5);
+            // Unicode survives.
+            p.setLyrics (parseLyrics ("[Chorus]\nzo\xC3\xAB \xE2\x80\x94 caf\xC3\xA9\n"));
+            const auto unicode = stateOf (p);
+            BoothCueAudioProcessor r;
+            r.setStateInformation (unicode.getData(), static_cast<int> (unicode.getSize()));
+            EXPECT (r.getSong().blocks().size() == 1
+                    && r.getSong().blocks()[0].lines[0].text == "zo\xC3\xAB \xE2\x80\x94 caf\xC3\xA9");
+            p.setLyrics ({});
+            EXPECT (p.getSong().blocks().empty());
+        }
+
         // Unlink: structure gone, nothing saved.
         p.unlinkSet();
         EXPECT (p.getLinkStatus().state == State::none && p.getSong().sections().empty());
@@ -186,8 +212,26 @@ namespace
         if (out.isEmpty())
             return;
         BoothCueAudioProcessor p;
-        p.linkSet (fixtures.getChildFile ("fallback.als"));
+        p.linkSet (fixtures.getChildFile ("parts.als"));
         waitFor (p, State::ok);
+        auto blocks = parseLyrics ("[Verse 1]\nStreetlights hum a song I used to know\nEvery window glowing soft and low\n"
+                                   "[Chorus]\nHold on, hold on\nWe're running out of reasons to be wrong\n"
+                                   "[Verse 2]\nPaper boats are sailing down the drain\n[Bridge]\nOh-oh\n");
+        blocks[1].lines[1].offset = 9.5;
+        p.setLyrics (blocks);
+
+        // A position in the first chorus, so its line shows as being sung.
+        FakePlayHead head;
+        head.info.setPpqPosition (60.0);
+        head.info.setBpm (96.0);
+        head.info.setIsPlaying (true);
+        p.setPlayHead (&head);
+        p.prepareToPlay (48000.0, 256);
+        juce::AudioBuffer<float> buffer (2, 256);
+        juce::MidiBuffer midi;
+        p.processBlock (buffer, midi);
+        p.setPlayHead (nullptr);
+
         std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
         editor->setVisible (true);
         pump (100);

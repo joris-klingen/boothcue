@@ -59,6 +59,17 @@ under "Done".
   display works on a machine without the file and relinks when it's back.
   get/setStateInformation work on a snapshot under a lock;
   setStateInformation off the message thread is applied by the timer.
+- **Editor** (step 4) — two columns, resizable. Left: the Live set (link,
+  reload, unlink, status), the singer display (open / hide, the four toggles,
+  text size, count-in: off / last bar only / 1, 2 or 4 bars first, and the
+  rest length that makes a line an "entry"), and the transport readout.
+  Right: the lyrics as text (paste, or "Load file..." for .txt) with Apply /
+  Revert, and the line list: each block with the sections it is sung in
+  (or why it isn't linked), each line with its start as bar.beat.16th
+  (tapped in yellow, "~" = evenly spread), a note naming sections without
+  lyrics, and the line being sung highlighted and scrolled into view.
+  Applying edited text keeps the timing of every unchanged line (lines pair
+  up by text, in order). Lyrics and their timings are saved with the set.
 - Tests: `ctest` runs `als-parser`, `song-logic`, `prompter-render`,
   `set-watcher` and `plugin-smoke` (the last three only with the plugin
   build; `plugin-smoke` needs a desktop session).
@@ -73,9 +84,7 @@ identity and CI. Namespace `boothcue`. The core (`AlsParser`, `Song`,
 1. ~~Plugin scaffold~~ — done, see "Done" above.
 2. ~~Display~~ — done, see "Done" above.
 3. ~~Linking the set~~ — done, see "Done" above.
-4. **Editor** — settings window in Live: link set, open display, lyric text
-   box (paste) + "Load file…" + "Apply", the line list with each line's
-   position, tap controls, display settings.
+4. ~~Editor~~ — done, see "Done" above (tap controls come with step 5).
 5. **Tap-along** — a selected line in the list is the tap cursor. Tap (button
    in the editor; `T` or space in the display window, since Live swallows most
    keys in plugin editors) stamps the cursor line with the current PPQ via
@@ -83,14 +92,10 @@ identity and CI. Namespace `boothcue`. The core (`AlsParser`, `Song`,
    sings another block, the cursor jumps to that block's first line. Selecting
    a line and tapping re-times just that line; nudge buttons move it by a
    quarter beat; "clear" returns it to the even spread.
-6. **State** — one `ValueTree` written by `getStateInformation`: the `.als`
-   path, the last parsed sections (so the display still works when the file is
-   missing on another machine), lyric blocks with line offsets, display
-   settings, display window open / bounds / fullscreen.
-   `getStateInformation` reads a snapshot under a lock and
-   `setStateInformation` stores the incoming state as that snapshot and raises
-   a flag for the message-thread timer, because hosts call both off the
-   message thread (flashroll does the same).
+6. **State** — the snapshot mechanism, the set (path + last sections) and the
+   lyrics with their offsets are saved already (steps 3-4). Still to add:
+   display settings (toggles, text size, count-in), display window open /
+   bounds / full screen, and the editor size.
 7. **Docs and release** — `README.md`, `CLAUDE.md`, `STATUS.md`,
    `installer/install.command` (VST3 + Standalone).
 8. **Real-set check** — run `als-check --dump` and

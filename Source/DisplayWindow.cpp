@@ -14,7 +14,11 @@ DisplayWindow::DisplayWindow (BoothCueAudioProcessor& processor)
     setContentOwned (new PrompterView (processor), false);
     setResizable (true, false);
     setResizeLimits (480, 270, 16384, 16384);
-    centreWithSize (1280, 720);
+    // No monitor reported (headless, or a display going away): don't centre on it.
+    if (juce::Desktop::getInstance().getDisplays().getPrimaryDisplay() != nullptr)
+        centreWithSize (1280, 720);
+    else
+        setBounds (0, 0, 1280, 720);
 }
 
 void DisplayWindow::closeButtonPressed()

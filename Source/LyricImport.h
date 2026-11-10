@@ -26,9 +26,10 @@ std::vector<LyricBlock> parseLyrics (const std::string& text);
 // The inverse: the text the blocks came from (timings are not part of it).
 std::string lyricsToText (const std::vector<LyricBlock>&);
 
-// After editing the text: lines that are unchanged (same header, same position
-// among the blocks with that header, same line number and text) keep the
-// timing they had in `previous`.
+// After editing the text: lines that are unchanged keep the timing they had in
+// `previous`. Blocks pair up by header and by position among the blocks with
+// that header; inside a block, lines pair up by text, in order (longest common
+// subsequence), so inserting or removing a line doesn't lose the other taps.
 void keepTimings (const std::vector<LyricBlock>& previous, std::vector<LyricBlock>& edited);
 
 }  // namespace boothcue
