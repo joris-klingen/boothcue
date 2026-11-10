@@ -65,6 +65,7 @@ if(BOOTHCUE_BUILD_PLUGIN)
         Source/PrompterPainter.cpp
         Source/PrompterView.cpp
         Source/DisplayWindow.cpp
+        Source/SetWatcher.cpp
     )
 
     target_include_directories(BoothCue PRIVATE Source)
@@ -109,6 +110,22 @@ if(BOOTHCUE_BUILD_PLUGIN)
         juce::juce_recommended_warning_flags
     )
 
+    # ---- watch-check ------------------------------------------------------------
+    # The real SetWatcher on copies of the fixtures: link, save, damaged save,
+    # delete / reappear, re-point. The `set-watcher` CTest.
+    juce_add_console_app(watch-check PRODUCT_NAME "watch-check")
+    target_sources(watch-check PRIVATE
+        tools/WatchCheck.cpp
+        Source/SetWatcher.cpp
+    )
+    target_include_directories(watch-check PRIVATE Source)
+    target_link_libraries(watch-check PRIVATE
+        boothcue-core
+        juce::juce_core
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+    )
+
     # ---- plugin-smoke -----------------------------------------------------------
     # The real processor without a host: pass-through, playhead, display window,
     # editor, state. Needs a desktop session (Linux: Xvfb + a window manager).
@@ -140,5 +157,6 @@ add_test(NAME song-logic COMMAND song-check)
 if(BOOTHCUE_BUILD_PLUGIN)
     add_test(NAME prompter-render
              COMMAND prompter-render "${CMAKE_CURRENT_BINARY_DIR}/prompter-sheet.png")
-    add_test(NAME plugin-smoke COMMAND plugin-smoke)
+    add_test(NAME set-watcher COMMAND watch-check "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+    add_test(NAME plugin-smoke COMMAND plugin-smoke "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
 endif()

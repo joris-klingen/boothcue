@@ -19,6 +19,15 @@ namespace
 BoothCueAudioProcessorEditor::BoothCueAudioProcessorEditor (BoothCueAudioProcessor& p)
     : AudioProcessorEditor (p), processor (p)
 {
+    linkButton.onClick = [this] { chooseSet(); };
+    reloadButton.onClick = [this] { processor.reloadSet(); };
+    unlinkButton.onClick = [this] { processor.unlinkSet(); };
+    linkButton.setTooltip ("Pick this song's Live set (.als). BoothCue reads the sections from its \"parts\" "
+                           "track and reads them again every time the set is saved.");
+    addAndMakeVisible (linkButton);
+    addAndMakeVisible (reloadButton);
+    addAndMakeVisible (unlinkButton);
+
     displayButton.onClick = [this]
     {
         if (processor.isDisplayVisible())
@@ -49,7 +58,7 @@ BoothCueAudioProcessorEditor::BoothCueAudioProcessorEditor (BoothCueAudioProcess
     addAndMakeVisible (sizeSlider);
 
     pullSettings();
-    setSize (520, 380);
+    setSize (560, 480);
     startTimerHz (30);
     timerCallback();
 }
@@ -80,10 +89,74 @@ void BoothCueAudioProcessorEditor::pushSettings()
     processor.setDisplaySettings (s);
 }
 
+void BoothCueAudioProcessorEditor::chooseSet()
+{
+    const auto current = processor.getLinkStatus().file;
+    const auto start = current != juce::File() ? current.getParentDirectory()
+                                               : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
+    chooser = std::make_unique<juce::FileChooser> ("Link the Live set of this song", start, "*.als");
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                          [this] (const juce::FileChooser& fc)
+                          {
+                              const auto file = fc.getResult();
+                              if (file.existsAsFile())
+                                  processor.linkSet (file);
+                          });
+}
+
+juce::String BoothCueAudioProcessorEditor::linkText (juce::Colour& colour) const
+{
+    using State = BoothCueAudioProcessor::LinkStatus::State;
+    const auto& st = processor.getLinkStatus();
+    const auto name = st.file.getFileName();
+    const auto lastRead = st.sections > 0 ? " Showing the last structure read (" + juce::String (st.sections)
+                                                + " sections)." : juce::String();
+    colour = theme::dim;
+
+    switch (st.state)
+    {
+        case State::none:
+            return st.sections > 0
+                       ? "Not linked." + lastRead
+                       : "No set linked. Link this song's .als: BoothCue reads the sections from its "
+                         "\"parts\" track, and again on every save.";
+        case State::reading:
+            return "Reading " + name + "...";
+        case State::missing:
+            colour = theme::loop;
+            return name + " not found (moved, renamed, or another computer)." + lastRead;
+        case State::error:
+            colour = theme::record;
+            return name + ": " + st.error + "." + lastRead;
+        case State::ok:
+        {
+            colour = theme::text;
+            auto text = name + ": " + juce::String (st.sections) + " sections from \"" + st.trackName + "\", read "
+                        + st.readAt.toString (false, true, true, true) + ".";
+            if (st.usedFallback)
+            {
+                colour = theme::loop;
+                text << " No track named \"parts\": used the 2nd track.";
+            }
+            return text;
+        }
+    }
+    return {};
+}
+
 void BoothCueAudioProcessorEditor::resized()
 {
     auto area = getLocalBounds().reduced (20);
-    area.removeFromTop (56);   // title
+    area.removeFromTop (66);   // title
+
+    auto links = area.removeFromTop (30);
+    linkButton.setBounds (links.removeFromLeft (120));
+    links.removeFromLeft (8);
+    reloadButton.setBounds (links.removeFromLeft (80));
+    links.removeFromLeft (8);
+    unlinkButton.setBounds (links.removeFromLeft (80));
+    linkArea = area.removeFromTop (48).withTrimmedTop (6);
+    area.removeFromTop (10);
 
     auto row = area.removeFromTop (32);
     displayButton.setBounds (row.removeFromLeft (220));
@@ -108,6 +181,15 @@ void BoothCueAudioProcessorEditor::resized()
 void BoothCueAudioProcessorEditor::timerCallback()
 {
     displayButton.setButtonText (processor.isDisplayVisible() ? "Hide singer display" : "Open singer display");
+    const bool linked = processor.getLinkStatus().file != juce::File();
+    reloadButton.setEnabled (linked);
+    unlinkButton.setEnabled (linked || ! processor.getSong().sections().empty());
+
+    if (processor.getContentVersion() != shownVersion)
+    {
+        shownVersion = processor.getContentVersion();
+        repaint (linkArea);
+    }
     shown = processor.getTransport();
     repaint (readoutArea);
 }
@@ -124,6 +206,13 @@ void BoothCueAudioProcessorEditor::paint (juce::Graphics& g)
     g.setFont (font (13.0f));
     g.drawText ("v" JucePlugin_VersionString "  -  in the display: F = full screen, Esc = leave it",
                 title, juce::Justification::centredLeft);
+
+    // The linked set.
+    juce::Colour linkColour;
+    g.setFont (font (13.5f));
+    const auto status = linkText (linkColour);
+    g.setColour (linkColour);
+    g.drawFittedText (status, linkArea, juce::Justification::topLeft, 3, 1.0f);
 
     // Transport readout, to check the host connection.
     auto area = readoutArea;

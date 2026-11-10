@@ -7,9 +7,9 @@
 namespace boothcue
 {
 
-// The settings window inside Live. For now: open / hide the singer's display,
-// the display toggles, and a transport readout to check a build in the host.
-// TODO step 4 adds linking the set, the lyrics and tap-along.
+// The settings window inside Live. For now: link the Live set, open / hide the
+// singer's display, the display toggles, and a transport readout to check a
+// build in the host. TODO step 4 adds the lyrics and tap-along.
 class BoothCueAudioProcessorEditor final : public juce::AudioProcessorEditor,
                                            private juce::Timer
 {
@@ -24,9 +24,18 @@ private:
     void timerCallback() override;
     void pushSettings();
     void pullSettings();
+    void chooseSet();
+    juce::String linkText (juce::Colour&) const;
 
     BoothCueAudioProcessor& processor;
     TransportState shown;
+
+    juce::TextButton linkButton   { "Link set..." };
+    juce::TextButton reloadButton { "Reload" };
+    juce::TextButton unlinkButton { "Unlink" };
+    std::unique_ptr<juce::FileChooser> chooser;
+    juce::Rectangle<int> linkArea;
+    juce::uint32 shownVersion = 0;
 
     juce::TextButton displayButton;
     juce::ToggleButton showPart   { "Song part" };

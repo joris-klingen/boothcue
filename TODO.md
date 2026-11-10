@@ -46,9 +46,22 @@ under "Done".
   `prompter-render` writes a PNG contact sheet of scenes;
   `plugin-smoke` drives the real processor (pass-through, playhead, display
   window, editor, state).
-- Tests: `ctest` runs `als-parser`, `song-logic`, `prompter-render` and
-  `plugin-smoke` (the last two only with the plugin build; `plugin-smoke`
-  needs a desktop session).
+- **Linking the set** (step 3) — `Source/SetWatcher.{h,cpp}`: a background
+  thread polls the linked file (size + modification time, once a second) and
+  re-parses once a change has held still for one poll, so every save in Live
+  is picked up and a half-written file isn't read. A failed read or a
+  missing file is reported; the last good structure stays on screen. The
+  processor's 10 Hz timer applies the reports. Editor: "Link set...",
+  "Reload", "Unlink" and a status line (sections and track, read time,
+  fallback to the 2nd track, missing / damaged file).
+  The plugin state now holds the set's path and the last structure read
+  (`<Set path track fallback><Section name start end/>...</Set>`), so the
+  display works on a machine without the file and relinks when it's back.
+  get/setStateInformation work on a snapshot under a lock;
+  setStateInformation off the message thread is applied by the timer.
+- Tests: `ctest` runs `als-parser`, `song-logic`, `prompter-render`,
+  `set-watcher` and `plugin-smoke` (the last three only with the plugin
+  build; `plugin-smoke` needs a desktop session).
 
 ## v1 — still to build, in this order
 
@@ -59,12 +72,7 @@ identity and CI. Namespace `boothcue`. The core (`AlsParser`, `Song`,
 
 1. ~~Plugin scaffold~~ — done, see "Done" above.
 2. ~~Display~~ — done, see "Done" above.
-3. **Linking the set** — `SetWatcher`: a background thread that polls the
-   linked file's modification time and size about once a second, re-parses
-   when they have settled, and hands the `AlsResult` to the message thread.
-   A failed parse keeps the last good structure. Editor: "Link set…" button
-   (async `FileChooser`) and a status line ("Parts — 9 sections — 14:02:11",
-   or the error, or "2nd track used: no track named parts").
+3. ~~Linking the set~~ — done, see "Done" above.
 4. **Editor** — settings window in Live: link set, open display, lyric text
    box (paste) + "Load file…" + "Apply", the line list with each line's
    position, tap controls, display settings.
@@ -122,18 +130,81 @@ set, detects the chords and their timing, and shows them alongside the lyrics.
    the same way and defaults to the lowest-playing monophonic track; without
    one, the bass note is the lowest note of the chord tracks.
 3. **Detect** — new plain-C++ module `Chords.{h,cpp}` with a `chord-check`
-   CTest:
-   - Cut the song at every beat (half bars as a setting); per slice, a
-     pitch-class weight = note duration inside the slice.
-   - Score the slice against templates (maj, min, dim, aug, sus2, sus4, 7,
-     maj7, m7, m7b5, dim7, 6, add9); bass note = lowest sounding pitch, which
-     gives slash chords (C/E).
-   - Merge equal neighbours, drop changes shorter than a beat, treat slices
-     with fewer than two pitch classes as "no chord" (keeps the last one).
-   - Spell roots from the song's key (`KeySignature` / scale information in
-     the set if present, otherwise the best-fitting key of all the chords), so
-     it reads Bb, not A#, in F.
-   - Result: `ChordTrack` = sorted `{ start, end, root, quality, bass }`.
+   CTest. Keys parts hide the harmony in embellishments (passing and
+   neighbour notes, grace notes, trills, runs, arpeggios), so the detector
+   filters and weighs notes before it matches anything, leans on the bass,
+   and smooths over time instead of judging each beat on its own.
+
+   **a. Separate the bass.** The bass line is its own input: the bass track
+   from chord step 2 ("Bass from") if there is one, otherwise the lowest sounding note of the
+   chord tracks, followed per beat. Short low notes that move by step between
+   two longer ones (walking-bass passing notes) are skipped for this. The
+   bass is the strongest single clue to the root.
+
+   **b. Filter embellishments** before weighing (each rule a named setting
+   with a test of its own):
+   - *Short off-beat notes*: shorter than a 16th (at the song's tempo) and
+     not starting on a beat → dropped: grace notes, trills, fast runs.
+   - *Passing and neighbour notes*: a short note that moves by step (1 or 2
+     semitones) between two longer notes, on a weak part of the beat → dropped.
+   - *Appoggiaturas and suspensions*: a note on the beat that resolves by
+     step down (or up) within a beat to a note that fits the chord → its
+     weight moves to the resolution note. This keeps a 4–3 suspension from
+     reading as sus4, unless it never resolves (then it IS sus4).
+   - *Repeated and arpeggiated notes*: every note in a slice counts for the
+     whole slice it sounds in, plus a short carry-over (as if the sustain
+     pedal were down), so a broken chord adds up to the chord. Live clip
+     envelopes for CC64 (sustain) extend notes where present; how Live
+     stores them still needs checking on a real set.
+   - *Melody on top*: a run of single high notes on a keys track (above the
+     chord voicing, mostly stepwise) counts as melody and weighs little.
+
+   **c. Weigh what's left** per beat slice, per pitch class:
+   duration inside the slice × metric weight (bar downbeat > other beats >
+   off-beats) × register weight (bass register > middle > notes above ~C6)
+   × track weight (chord / pad tracks full, guitar full, lead or vocal-melody
+   tracks low or out; tracks that look monophonic and high are treated as
+   melody automatically) × velocity (gently: 0.75 .. 1).
+
+   **d. Match with the bass as a prior.** Score each candidate (root ×
+   quality: maj, min, dim, aug, sus2, sus4, 7, maj7, m7, m7b5, dim7, 6, m6,
+   add9, plus "power chord" root + 5th) against the weights:
+   - reward the weight on chord tones, with the root and 3rd counting most
+     and the 5th least (allowed to be missing);
+   - penalise heavy weight on notes outside the chord;
+   - add a bonus when the bass note is the root, and a smaller one when it
+     is the 3rd or 5th (inversions → slash chords such as C/E);
+   - with only bass + one other note, prefer the simplest chord that fits
+     the key over exotic ones;
+   - on a tie, the simpler chord and the one in the song's key win.
+
+   **e. Smooth over time** with Viterbi over the beat slices: each slice's
+   candidate scores, plus a cost for changing chord that is lower on a bar
+   or half-bar line than mid-bar (harmonic rhythm), and a minimum chord
+   length of one beat. This stops a single passing chord-tone flicker from
+   becoming a chord change, and lets a strong bass move on a downbeat win.
+
+   **f. Key and spelling.** Estimate the key per section with pitch-class
+   profiles (Krumhansl-style) over the filtered weights; a diatonic chord
+   gets a small bonus in (d), and roots are spelled from the key (Bb, not
+   A#, in F). A `KeySignature` / scale stored in the set, if present, wins.
+
+   **g. Confidence.** Each detected chord keeps its winning margin. Low
+   confidence shows as the chord name with a "?" (or keeps the previous
+   chord); the editor lists low-confidence spots so they can be corrected
+   with manual chords (chord step 4).
+
+   **h. Test it against known answers.** `chord-check` fixtures are short
+   MIDI note lists with hand-labelled chords per beat: the same
+   progression played as plain block chords, inverted, arpeggiated, with
+   passing notes and grace notes, with suspensions that resolve and that
+   don't, with a melody on top, with a walking bass. The check reports
+   accuracy per fixture and fails below a threshold; a `--explain` dump
+   prints per-beat weights and the top three candidates, for tuning on
+   real sets. Real songs of Joris's with known chords become fixtures as
+   soon as there are some.
+
+   Result: `ChordTrack` = sorted `{ start, end, root, quality, bass, confidence }`.
 4. **Manual chords** — detection will be wrong sometimes, and audio-only
    songs have nothing to detect. The lyric text takes chord lines per section,
    e.g. `| Am | F | C G |`, one bar per cell, which override detection for

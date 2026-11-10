@@ -3,8 +3,11 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "Prompter.h"
+#include "SetWatcher.h"
 #include "Song.h"
 #include "Transport.h"
+
+#include <atomic>
 
 #include <memory>
 
@@ -22,15 +25,18 @@ class DisplayWindow;
 //   * Audio thread (processBlock / processBlockBypassed) — copies the host's
 //     position into a TransportState, counts loop passes, and publishes it via
 //     SharedTransport. No allocation, no locks, no parsing, no UI.
-//   * Message thread — owns the Song, the display settings and the display
-//     window; the editor and the display read getTransport() on their timers.
-//     The .als parsing will run on a background thread (TODO step 3), never on
-//     the audio thread.
+//   * Message thread — owns the Song, the display settings, the link status
+//     and the display window; the editor and the display read getTransport()
+//     on their timers. This object's timer collects SetWatcher reports.
+//   * SetWatcher thread — stats and parses the linked .als, never anything else.
+//   * get/setStateInformation may come from any thread: they only touch a
+//     ValueTree snapshot under stateLock (see updateStateSnapshot).
 //
 // There are no automatable parameters: everything BoothCue keeps (linked set,
 // lyrics, timings, display settings) is plugin state, saved with the Live set.
 
-class BoothCueAudioProcessor final : public juce::AudioProcessor
+class BoothCueAudioProcessor final : public juce::AudioProcessor,
+                                     private juce::Timer
 {
 public:
     BoothCueAudioProcessor();
@@ -76,8 +82,26 @@ public:
     const DisplaySettings& getDisplaySettings() const noexcept          { return displaySettings; }
     void setDisplaySettings (const DisplaySettings&);
 
-    // Goes up whenever the song or the display settings change, so views can
-    // tell when to repaint.
+    // ---- the linked Live set (message thread) ----------------------------------
+    struct LinkStatus
+    {
+        enum class State { none, reading, ok, missing, error };
+        State state = State::none;
+        juce::File file;
+        juce::String error;         // State::error
+        juce::Time readAt;          // last successful read
+        int sections = 0;           // in the structure shown
+        juce::String trackName;     // the track the sections came from
+        bool usedFallback = false;  // no "parts" track: the 2nd track was used
+    };
+
+    void linkSet (const juce::File&);
+    void unlinkSet();
+    void reloadSet();
+    const LinkStatus& getLinkStatus() const noexcept                    { return linkStatus; }
+
+    // Goes up whenever the song, the link status or the display settings
+    // change, so views can tell when to repaint.
     juce::uint32 getContentVersion() const noexcept                     { return contentVersion; }
 
     // The singer's display window (created on first use, then shown / hidden).
@@ -96,6 +120,12 @@ private:
     // Audio thread: playhead -> TransportState -> SharedTransport.
     void captureTransport() noexcept;
 
+    // Message thread.
+    void timerCallback() override;
+    void applyReport (const SetWatcher::Report&);
+    void applyState (const juce::ValueTree&);
+    void setSections (std::vector<Section>);
+    void updateStateSnapshot();   // song / link -> stateSnapshot
     SharedTransport transport;
     LoopCounter loopCounter;
 
@@ -103,6 +133,17 @@ private:
     DisplaySettings displaySettings;
     juce::uint32 contentVersion = 1;
     std::unique_ptr<DisplayWindow> displayWindow;
+
+    SetWatcher watcher;
+    LinkStatus linkStatus;
+
+    // What getStateInformation writes, kept current by the message thread.
+    // setStateInformation from another thread parks the tree in pendingState
+    // for the timer to apply.
+    juce::CriticalSection stateLock;
+    juce::ValueTree stateSnapshot;
+    juce::ValueTree pendingState;
+    std::atomic<bool> hasPendingState { false };
 
     mutable juce::SpinLock trackNameLock;
     juce::String trackName;
