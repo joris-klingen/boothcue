@@ -306,15 +306,14 @@ BoothCueAudioProcessorEditor::BoothCueAudioProcessorEditor (BoothCueAudioProcess
 
     revertLyrics();   // the song's lyrics into the text box
     pullSettings();
-    {
-        const auto& t = processor.getTapSettings();
-        snapBox.setSelectedId (t.snapBeats >= 0.5 ? 3 : t.snapBeats >= 0.25 ? 2 : 1, juce::dontSendNotification);
-        latencySlider.setValue (t.latencyMs, juce::dontSendNotification);
-    }
 
     setResizable (true, true);
     setResizeLimits (860, 700, 2400, 1600);
-    setSize (1040, 720);
+    const auto saved = processor.getEditorSize();
+    if (saved.x >= 860 && saved.y >= 700)
+        setSize (saved.x, saved.y);
+    else
+        setSize (1040, 720);
     startTimerHz (30);
     timerCallback();
 }
@@ -349,6 +348,11 @@ void BoothCueAudioProcessorEditor::pullSettings()
         if (s.count.entryGapBars >= bars - 1.0e-6)
             entryId = static_cast<int> (bars);
     entryBox.setSelectedId (entryId, juce::dontSendNotification);
+    entryBox.setEnabled (s.count.enabled);
+
+    const auto& t = processor.getTapSettings();
+    snapBox.setSelectedId (t.snapBeats >= 0.5 ? 3 : t.snapBeats >= 0.25 ? 2 : 1, juce::dontSendNotification);
+    latencySlider.setValue (t.latencyMs, juce::dontSendNotification);
 }
 
 void BoothCueAudioProcessorEditor::pushSettings()
@@ -554,6 +558,7 @@ void BoothCueAudioProcessorEditor::updateLyricButtons()
 
 void BoothCueAudioProcessorEditor::resized()
 {
+    processor.setEditorSize ({ getWidth(), getHeight() });
     auto area = getLocalBounds().reduced (20);
 
     // Left column.
@@ -643,6 +648,7 @@ void BoothCueAudioProcessorEditor::timerCallback()
     if (processor.getContentVersion() != shownVersion)
     {
         shownVersion = processor.getContentVersion();
+        pullSettings();   // settings restored from the host follow here
 
         // Lyrics changed elsewhere (state restored, a tap): follow, unless the
         // text box holds edits not applied yet.

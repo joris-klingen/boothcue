@@ -137,9 +137,14 @@ public:
     juce::uint32 getContentVersion() const noexcept                     { return contentVersion; }
 
     // The singer's display window (created on first use, then shown / hidden).
+    // Whether it is open, where, and full screen or not is saved with the set.
     void showDisplay();
     void hideDisplay();
     bool isDisplayVisible() const;
+
+    // The plugin window's size, saved with the set (0 = the default).
+    juce::Point<int> getEditorSize() const noexcept                     { return editorSize; }
+    void setEditorSize (juce::Point<int>);
 
     // The name of the track BoothCue sits on, when the host tells (Live does,
     // for VST3). Any thread.
@@ -167,6 +172,9 @@ private:
     DisplaySettings displaySettings;
     juce::uint32 contentVersion = 1;
     std::unique_ptr<DisplayWindow> displayWindow;
+    juce::String displayPlacement;   // ResizableWindow state string, kept while it is closed too
+    juce::Rectangle<int> windowedBounds;
+    juce::Point<int> editorSize;
 
     SetWatcher watcher;
     LinkStatus linkStatus;

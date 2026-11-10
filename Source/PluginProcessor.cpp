@@ -37,6 +37,26 @@ namespace
     const juce::Identifier kText     { "text" };
     const juce::Identifier kOffset   { "offset" };
 
+    // <Display part lyrics chords bass scale count countBars entryGap open placement/>
+    // <Tap snap latency/>   <Editor w h/>
+    const juce::Identifier kDisplay   { "Display" };
+    const juce::Identifier kShowPart  { "part" };
+    const juce::Identifier kShowLyric { "lyrics" };
+    const juce::Identifier kShowChord { "chords" };
+    const juce::Identifier kShowBass  { "bass" };
+    const juce::Identifier kScale     { "scale" };
+    const juce::Identifier kCount     { "count" };
+    const juce::Identifier kCountBars { "countBars" };
+    const juce::Identifier kEntryGap  { "entryGap" };
+    const juce::Identifier kOpen      { "open" };
+    const juce::Identifier kPlacement { "placement" };
+    const juce::Identifier kTap       { "Tap" };
+    const juce::Identifier kSnap      { "snap" };
+    const juce::Identifier kLatency   { "latency" };
+    const juce::Identifier kEditor    { "Editor" };
+    const juce::Identifier kWidth     { "w" };
+    const juce::Identifier kHeight    { "h" };
+
     juce::String str (const std::string& s) { return juce::String::fromUTF8 (s.c_str()); }
 
     constexpr int kTimerHz = 10;
@@ -243,6 +263,16 @@ void BoothCueAudioProcessor::setTapSettings (const TapSettings& s)
     tapSettings.snapBeats = juce::jlimit (0.0, 4.0, s.snapBeats);
     tapSettings.latencyMs = juce::jlimit (0.0, 500.0, s.latencyMs);
     ++contentVersion;
+    updateStateSnapshot();
+}
+
+void BoothCueAudioProcessor::setEditorSize (juce::Point<int> size)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    if (size == editorSize)
+        return;
+    editorSize = size;
+    updateStateSnapshot();
 }
 
 void BoothCueAudioProcessor::setTapCursor (int block, int line)
@@ -380,17 +410,43 @@ void BoothCueAudioProcessor::setDisplaySettings (const DisplaySettings& s)
     JUCE_ASSERT_MESSAGE_THREAD
     displaySettings = s;
     displaySettings.fontScale = juce::jlimit (0.5f, 2.0f, s.fontScale);
+    displaySettings.count.countInBars = juce::jlimit (0, 8, s.count.countInBars);
+    displaySettings.count.entryGapBars = juce::jlimit (0.5, 32.0, s.count.entryGapBars);
     ++contentVersion;
+    updateStateSnapshot();
 }
 
 void BoothCueAudioProcessor::showDisplay()
 {
     JUCE_ASSERT_MESSAGE_THREAD
     if (displayWindow == nullptr)
+    {
         displayWindow = std::make_unique<DisplayWindow> (*this);
+        if (displayPlacement.isNotEmpty())
+            displayWindow->restoreWindowStateFromString (displayPlacement);
+        displayWindow->onPlacementChanged = [this]
+        {
+            // "fs x y w h" / "x y w h" (ResizableWindow's format; its restore
+            // keeps the window on a screen that exists). While full screen, the
+            // windowed bounds from before are kept.
+            if (displayWindow != nullptr && displayWindow->isVisible())
+            {
+                const bool fullScreen = displayWindow->isFullScreen();
+                if (! fullScreen)
+                    windowedBounds = displayWindow->getBounds();
+                if (! windowedBounds.isEmpty())
+                    displayPlacement = (fullScreen ? "fs " : "") + windowedBounds.toString();
+            }
+            updateStateSnapshot();
+        };
+    }
     displayWindow->setTrackName (getTrackName());
     displayWindow->setVisible (true);
     displayWindow->toFront (true);
+    // Full screen is only possible once the window is on screen.
+    if (displayPlacement.startsWithIgnoreCase ("fs") && ! displayWindow->isFullScreen())
+        displayWindow->setFullScreen (true);
+    updateStateSnapshot();
 }
 
 void BoothCueAudioProcessor::hideDisplay()
@@ -450,6 +506,35 @@ void BoothCueAudioProcessor::updateStateSnapshot()
             set.appendChild (t, nullptr);
         }
         state.appendChild (set, nullptr);
+    }
+
+    {
+        juce::ValueTree display (kDisplay);
+        const auto& d = displaySettings;
+        display.setProperty (kShowPart, d.showSongPart, nullptr);
+        display.setProperty (kShowLyric, d.showLyrics, nullptr);
+        display.setProperty (kShowChord, d.showChords, nullptr);
+        display.setProperty (kShowBass, d.showBassNote, nullptr);
+        display.setProperty (kScale, d.fontScale, nullptr);
+        display.setProperty (kCount, d.count.enabled, nullptr);
+        display.setProperty (kCountBars, d.count.countInBars, nullptr);
+        display.setProperty (kEntryGap, d.count.entryGapBars, nullptr);
+        display.setProperty (kOpen, isDisplayVisible(), nullptr);
+        display.setProperty (kPlacement, displayPlacement, nullptr);
+        state.appendChild (display, nullptr);
+
+        juce::ValueTree tap (kTap);
+        tap.setProperty (kSnap, tapSettings.snapBeats, nullptr);
+        tap.setProperty (kLatency, tapSettings.latencyMs, nullptr);
+        state.appendChild (tap, nullptr);
+
+        if (editorSize.x > 0 && editorSize.y > 0)
+        {
+            juce::ValueTree editor (kEditor);
+            editor.setProperty (kWidth, editorSize.x, nullptr);
+            editor.setProperty (kHeight, editorSize.y, nullptr);
+            state.appendChild (editor, nullptr);
+        }
     }
 
     if (! song.blocks().empty())
@@ -546,6 +631,47 @@ void BoothCueAudioProcessor::applyState (const juce::ValueTree& state)
         linkStatus.state = LinkStatus::State::reading;
         linkStatus.file = juce::File (path);
     }
+    // Display and tap settings, and the windows (missing: the defaults).
+    {
+        const auto d = state.getChildWithName (kDisplay);
+        DisplaySettings ds;
+        ds.showSongPart = d.getProperty (kShowPart, ds.showSongPart);
+        ds.showLyrics   = d.getProperty (kShowLyric, ds.showLyrics);
+        ds.showChords   = d.getProperty (kShowChord, ds.showChords);
+        ds.showBassNote = d.getProperty (kShowBass, ds.showBassNote);
+        ds.fontScale    = static_cast<float> (d.getProperty (kScale, ds.fontScale));
+        ds.count.enabled      = d.getProperty (kCount, ds.count.enabled);
+        ds.count.countInBars  = d.getProperty (kCountBars, ds.count.countInBars);
+        ds.count.entryGapBars = d.getProperty (kEntryGap, ds.count.entryGapBars);
+        displaySettings = ds;
+        displaySettings.fontScale = juce::jlimit (0.5f, 2.0f, ds.fontScale);
+        displaySettings.count.countInBars = juce::jlimit (0, 8, ds.count.countInBars);
+        displaySettings.count.entryGapBars = juce::jlimit (0.5, 32.0, ds.count.entryGapBars);
+
+        const auto t = state.getChildWithName (kTap);
+        tapSettings.snapBeats = juce::jlimit (0.0, 4.0, static_cast<double> (t.getProperty (kSnap, 0.0)));
+        tapSettings.latencyMs = juce::jlimit (0.0, 500.0, static_cast<double> (t.getProperty (kLatency, 0.0)));
+
+        const auto e = state.getChildWithName (kEditor);
+        editorSize = { static_cast<int> (e.getProperty (kWidth, 0)), static_cast<int> (e.getProperty (kHeight, 0)) };
+
+        displayPlacement = d[kPlacement].toString();
+        {
+            auto tokens = juce::StringArray::fromTokens (displayPlacement, false);
+            if (tokens.size() > 0 && tokens[0].startsWithIgnoreCase ("fs"))
+                tokens.remove (0);
+            windowedBounds = tokens.size() >= 4 ? juce::Rectangle<int> (tokens[0].getIntValue(), tokens[1].getIntValue(),
+                                                                          tokens[2].getIntValue(), tokens[3].getIntValue())
+                                                : juce::Rectangle<int>();
+        }
+        if (displayWindow != nullptr && displayPlacement.isNotEmpty())
+            displayWindow->restoreWindowStateFromString (displayPlacement);
+        if (static_cast<bool> (d[kOpen]))
+            showDisplay();
+        else if (isDisplayVisible())
+            displayWindow->closeButtonPressed();
+    }
+
     watcher.watch (linkStatus.file);
     ++contentVersion;
     updateStateSnapshot();

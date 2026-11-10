@@ -302,6 +302,82 @@ namespace
         p.setPlayHead (nullptr);
     }
 
+    // Step 6: display / tap settings, the display window and the editor size
+    // come back with the state.
+    void settingsTests()
+    {
+        juce::MemoryBlock saved;
+        {
+            BoothCueAudioProcessor p;
+            DisplaySettings d;
+            d.showSongPart = false;
+            d.showChords = false;
+            d.fontScale = 1.4f;
+            d.count.enabled = true;
+            d.count.countInBars = 4;
+            d.count.entryGapBars = 2.0;
+            p.setDisplaySettings (d);
+            BoothCueAudioProcessor::TapSettings t;
+            t.snapBeats = 0.5;
+            t.latencyMs = 45.0;
+            p.setTapSettings (t);
+            p.setEditorSize ({ 1200, 800 });
+
+            p.showDisplay();
+            pump (150);
+            auto* w = dynamic_cast<juce::ResizableWindow*> (juce::TopLevelWindow::getActiveTopLevelWindow());
+            for (int i = 0; i < juce::TopLevelWindow::getNumTopLevelWindows(); ++i)
+                if (juce::TopLevelWindow::getTopLevelWindow (i)->getName().startsWith ("BoothCue"))
+                    w = dynamic_cast<juce::ResizableWindow*> (juce::TopLevelWindow::getTopLevelWindow (i));
+            EXPECT (w != nullptr);
+            if (w != nullptr)
+                w->setBounds (100, 120, 900, 500);
+            pump (150);
+            p.getStateInformation (saved);
+            const auto tree = juce::ValueTree::readFromData (saved.getData(), saved.getSize());
+            EXPECT (tree.getChildWithName ("Display")["placement"].toString() == "100 120 900 500");
+        }
+
+        BoothCueAudioProcessor q;
+        q.setStateInformation (saved.getData(), static_cast<int> (saved.getSize()));
+        pump (150);
+        const auto& d = q.getDisplaySettings();
+        EXPECT (! d.showSongPart && d.showLyrics && ! d.showChords && d.showBassNote);
+        EXPECT (std::abs (d.fontScale - 1.4f) < 1e-5f);
+        EXPECT (d.count.enabled && d.count.countInBars == 4 && std::abs (d.count.entryGapBars - 2.0) < 1e-9);
+        EXPECT (std::abs (q.getTapSettings().snapBeats - 0.5) < 1e-9 && std::abs (q.getTapSettings().latencyMs - 45.0) < 1e-9);
+        EXPECT (q.getEditorSize() == juce::Point<int> (1200, 800));
+        EXPECT (q.isDisplayVisible());   // it was open: it opens again
+        for (int i = 0; i < juce::TopLevelWindow::getNumTopLevelWindows(); ++i)
+            if (auto* w = juce::TopLevelWindow::getTopLevelWindow (i); w->getName().startsWith ("BoothCue") && w->isVisible())
+            {
+                if (! (w->getWidth() == 900 && w->getHeight() == 500))
+                    std::printf ("restored window: %s\n", w->getBounds().toString().toRawUTF8());
+                EXPECT (w->getWidth() == 900 && w->getHeight() == 500);
+            }
+
+        // Closed when saved: stays closed; and an older state without these
+        // parts gives the defaults.
+        q.hideDisplay();
+        juce::MemoryBlock closed;
+        q.getStateInformation (closed);
+        BoothCueAudioProcessor r;
+        r.setStateInformation (closed.getData(), static_cast<int> (closed.getSize()));
+        EXPECT (! r.isDisplayVisible());
+        juce::ValueTree old ("BoothCue");
+        old.setProperty ("version", 1, nullptr);
+        juce::MemoryBlock oldState;
+        {
+            juce::MemoryOutputStream out (oldState, false);
+            old.writeToStream (out);
+        }
+        BoothCueAudioProcessor s;
+        s.setStateInformation (oldState.getData(), static_cast<int> (oldState.getSize()));
+        EXPECT (s.getDisplaySettings().showSongPart && std::abs (s.getDisplaySettings().fontScale - 1.0f) < 1e-6f);
+        EXPECT (s.getTapSettings().latencyMs < 1e-9 && ! s.isDisplayVisible());
+        pump (50);
+    }
+
     // With BOOTHCUE_EDITOR_PNG set: a snapshot of the editor with a linked set,
     // for reviewing the layout without a host.
     void editorSnapshot (const juce::File& fixtures)
@@ -471,6 +547,7 @@ int main (int argc, char** argv)
         const auto fixtures = juce::File::getCurrentWorkingDirectory().getChildFile (argv[1]);
         linkTests (fixtures);
         tapTests (fixtures);
+        settingsTests();
         editorSnapshot (fixtures);
     }
     else

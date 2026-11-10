@@ -2,6 +2,8 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <functional>
+
 namespace boothcue
 {
 
@@ -20,6 +22,11 @@ public:
 
     void closeButtonPressed() override;
     void setTrackName (const juce::String&);
+
+    void moved() override;
+    void resized() override;
+    // Moved, resized, or in / out of full screen: the saved state follows.
+    std::function<void()> onPlacementChanged;
 
 private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DisplayWindow)

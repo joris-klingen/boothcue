@@ -24,11 +24,27 @@ DisplayWindow::DisplayWindow (BoothCueAudioProcessor& processor)
         setBounds (0, 0, 1280, 720);
 }
 
+void DisplayWindow::moved()
+{
+    DocumentWindow::moved();
+    if (onPlacementChanged)
+        onPlacementChanged();
+}
+
+void DisplayWindow::resized()
+{
+    DocumentWindow::resized();
+    if (onPlacementChanged)
+        onPlacementChanged();
+}
+
 void DisplayWindow::closeButtonPressed()
 {
     if (isFullScreen())
         setFullScreen (false);
     setVisible (false);
+    if (onPlacementChanged)
+        onPlacementChanged();
 }
 
 void DisplayWindow::setTrackName (const juce::String& track)

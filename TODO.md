@@ -105,6 +105,14 @@ under "Done".
   Known limit: stanzas without a header join the part above them (De langste
   rij's first verses land in the Refrein); the line list shows it, a header
   fixes it.
+- **Everything saved with the set** (step 6) — besides the set, the structure
+  and the lyrics with their timings: the display settings (four toggles,
+  text size, count-in, rest length), the tap settings (snap, latency), the
+  singer display's open / closed state, position and size, and full screen,
+  and the plugin window's size. A display saved on a monitor that isn't
+  connected comes back on a screen that is (JUCE's window restore). An older
+  state without these parts gives the defaults. Full screen restore is not
+  testable under Xvfb; check it on the Mac.
 - Tests: `ctest` runs `als-parser`, `song-logic`, `prompter-render`,
   `set-watcher` and `plugin-smoke` (the last three only with the plugin
   build; `plugin-smoke` needs a desktop session).
@@ -121,10 +129,7 @@ identity and CI. Namespace `boothcue`. The core (`AlsParser`, `Song`,
 3. ~~Linking the set~~ — done, see "Done" above.
 4. ~~Editor~~ — done, see "Done" above (tap controls come with step 5).
 5. ~~Tap-along~~ — done, see "Done" above.
-6. **State** — the snapshot mechanism, the set (path + last sections) and the
-   lyrics with their offsets are saved already (steps 3-4). Still to add:
-   display settings (toggles, text size, count-in), tap settings (snap,
-   latency), display window open / bounds / full screen, and the editor size.
+6. ~~State~~ — done, see "Done" above.
 7. **Docs and release** — `README.md`, `CLAUDE.md`, `STATUS.md`,
    `installer/install.command` (VST3 + Standalone).
 8. **Real-set check** — run `als-check --dump` and
