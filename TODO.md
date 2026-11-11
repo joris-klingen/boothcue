@@ -180,6 +180,20 @@ identity and CI. Namespace `boothcue`. The core (`AlsParser`, `Song`,
    The set was edited by hand (both Parts tracks: the detached alternative
    intro removed, every part named by its clip colour: 17 intro, 22 verse,
    26 pre, 14 chorus, 7 bridge); all its sections now link to the lyrics.
+- **BoothCue's own lyrics and chords database** (decided: BoothCue reads the
+  `.als` for structure and detection, and never writes it). Both are text,
+  for editing, import and export, and are saved with the plugin state:
+  - Chords tab: the chords as a chart (`Source/ChordChart.*`): a `[part]`
+    block per song part in order, `|...|` per bar, chords split evenly in a
+    bar, `.` = one more beat, `-` = no chord, empty bar = goes on, `%`,
+    `||: :||`, `(alt)`, `x2`; and the band's chart lines (`Verse/Chorus: ...`)
+    filling every part of those kinds. Load / Save / Apply / Revert / Undo.
+    The chords follow detection after every save until a chart is applied or
+    loaded; then they are kept ("Use detected" goes back). The import says
+    what it filled and what it couldn't read.
+  - Lyrics tab: Load / Save / Apply / Revert; Save writes the timings as
+    `@bar.beat.16th` before every tapped line, Load reads them back.
+  - `als-check --chart <set.als>` prints a set's detected chords as a chart.
 - **Live's clip colours** — each part is drawn in its clip's colour from the
   set (Live's 70-colour palette, by the index the clip stores), so the
   display matches Live; parts without a clip colour fall back to the colour

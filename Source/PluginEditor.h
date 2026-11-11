@@ -11,9 +11,13 @@ namespace boothcue
 //
 //   left   the linked Live set, the singer display (open, toggles, text size,
 //          count-in), and a transport readout to check the host connection
-//   right  the lyrics as text (paste, or load a .txt) and the line list: each
-//          block with the sections it is linked to, each line with where it
-//          starts; the line being sung is highlighted
+//   right  two tabs, BoothCue's own database for the song (it never writes
+//          to the Live set):
+//          Lyrics - the text (paste, load, save with timings) and the line list:
+//                   each block with the parts it is sung in, each line with
+//                   where it starts; the line being sung is highlighted
+//          Chords - the chords as a chart (edit, load, save); detected from the
+//                   set until edited, then kept
 //
 // Tap-along: the selected line is the one the next tap stamps; Tap (or T /
 // space here, when the host passes the key on; always in the display window)
@@ -70,6 +74,13 @@ private:
     void syncSelectionToCursor();
     bool selectedLine (int& block, int& line) const;
 
+    void showTab (bool chords);
+    void saveTextFile (const juce::String& title, const juce::String& suffix, const juce::String& text);
+    void applyChords();
+    void revertChords();
+    void loadChordsFile();
+    void updateChordButtons();
+
     void loadLyricsFile();
     void applyLyrics();
     void revertLyrics();
@@ -117,8 +128,22 @@ private:
     juce::TextButton clearAllButton { "Clear all" };
     bool syncingSelection = false;
 
+    // ---- right: tabs ----
+    juce::TextButton lyricsTab { "Lyrics" }, chordsTab { "Chords" };
+    bool showingChords = false;
+    juce::Rectangle<int> tabRow, noteRow;
+
+    // ---- right: chords ----
+    juce::TextButton chordLoad { "Load..." }, chordSave { "Save..." }, chordApply { "Apply" },
+                     chordRevert { "Revert" }, chordUndo { "Undo" }, chordDetected { "Use detected" };
+    juce::TextEditor chordsEditor;
+    juce::String chordsApplied;     // what the chart box held when last applied / shown
+    juce::String chordNote;         // what the last chart import noticed
+    bool chordWarning = false;
+
     // ---- right: lyrics ----
-    juce::TextButton loadButton   { "Load file..." };
+    juce::TextButton saveLyricsButton { "Save..." };
+    juce::TextButton loadButton   { "Load..." };
     juce::TextButton applyButton  { "Apply" };
     juce::TextButton revertButton { "Revert" };
     juce::TextEditor lyricsEditor;
@@ -129,7 +154,7 @@ private:
     LineList lineModel { processor };
     juce::ListBox lineList { "Lines", &lineModel };
 
-    juce::Rectangle<int> leftColumn, lyricsTitle, linesTitle;
+    juce::Rectangle<int> leftColumn, linesTitle;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BoothCueAudioProcessorEditor)
 };

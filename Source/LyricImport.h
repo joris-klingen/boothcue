@@ -21,6 +21,8 @@ namespace boothcue
 //     chorus
 //     ...
 //     Zet uw winkelwagen aan de kant! x 2  <- sung twice: two lines
+//     @13.2.3 Hold on, hold on            <- a start given as bar.beat.16th
+//                                            (BoothCue's export writes these)
 //
 //     Refrein                             <- a header used before, on its own:
 //                                            "the chorus again", no new lines
@@ -43,12 +45,17 @@ struct LyricImportReport
     int  repeatMarkers   = 0;               // bare headers meaning "this part again"
     int  stanzasMatched  = 0;               // header-less stanzas recognised as a repeat
     bool anyHeader       = false;           // false: nothing can link to the song's sections
+    int  timedLines      = 0;               // lines with an "@bar.beat" start
 };
 
 std::vector<LyricBlock> parseLyrics (const std::string& text, LyricImportReport* report = nullptr);
 
 // The inverse: the text the blocks came from (timings are not part of it).
 std::string lyricsToText (const std::vector<LyricBlock>&);
+
+// For export: the same, with "@bar.beat.16th " in front of every tapped line
+// (its start in the first part that sings it). parseLyrics reads it back.
+std::string lyricsToTimedText (const Song&);
 
 // After editing the text: lines that are unchanged keep the timing they had in
 // `previous`. Blocks pair up by header and by position among the blocks with

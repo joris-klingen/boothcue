@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 
 #include "DisplayWindow.h"
+#include "LyricImport.h"
 #include "PluginEditor.h"
 
 namespace boothcue
@@ -62,6 +63,7 @@ namespace
     const juce::Identifier kTonic     { "tonic" };
     const juce::Identifier kMinor     { "minor" };
     const juce::Identifier kSummary   { "summary" };
+    const juce::Identifier kEdited    { "edited" };   // the chords were edited / imported: detection doesn't replace them
     const juce::Identifier kWidth     { "w" };
     const juce::Identifier kHeight    { "h" };
 
@@ -80,7 +82,7 @@ BoothCueAudioProcessor::BusesProperties BoothCueAudioProcessor::createBusesPrope
 BoothCueAudioProcessor::BoothCueAudioProcessor()
     : AudioProcessor (createBusesProperties())
 {
-    song.setBarLength (TimeSig().barLength());   // until the host says otherwise
+    song.setTimeSig (TimeSig());   // until the host says otherwise
     updateStateSnapshot();
     startTimerHz (kTimerHz);
 }
@@ -193,6 +195,9 @@ void BoothCueAudioProcessor::unlinkSet()
     watcher.watch ({});
     linkStatus = LinkStatus();
     song.setChords ({}, {});
+    detectedChords.clear();
+    chordsEdited = false;
+    hasChordUndo = false;
     setSections ({});
     updateStateSnapshot();
 }
@@ -226,9 +231,9 @@ void BoothCueAudioProcessor::timerCallback()
     if (const auto t = transport.read(); t.valid)
     {
         const double bar = TimeSig { t.sigNum, t.sigDen }.barLength();
-        if (std::abs (bar - song.barLength()) > 1.0e-9)
+        if (std::abs (bar - song.barLength()) > 1.0e-9 || song.timeSig().num != t.sigNum || song.timeSig().den != t.sigDen)
         {
-            song.setBarLength (bar);
+            song.setTimeSig (TimeSig { t.sigNum, t.sigDen });
             watcher.setBarBeats (bar);
             if (linkStatus.file != juce::File())
                 watcher.rescan();
@@ -261,9 +266,12 @@ void BoothCueAudioProcessor::applyReport (const SetWatcher::Report& report)
         linkStatus.usedFallback = report.result.usedFallback;
         setSections (std::move (sections));
 
-        // Chords from the set's MIDI.
+        // Chords from the set's MIDI: shown unless the chords were edited.
         const auto& c = report.chords;
-        song.setChords (c.result.spans, c.result.key);
+        detectedChords = c.result.spans;
+        detectedKey = c.result.key;
+        if (! chordsEdited)
+            song.setChords (c.result.spans, c.result.key);
         if (! c.anyNotes || c.result.spans.empty())
         {
             linkStatus.chordSummary = {};
@@ -288,6 +296,56 @@ void BoothCueAudioProcessor::applyReport (const SetWatcher::Report& report)
     linkStatus.sections = static_cast<int> (song.sections().size());
     ++contentVersion;
     updateStateSnapshot();
+}
+
+// ---- the chords database (message thread) -------------------------------------------------
+
+juce::String BoothCueAudioProcessor::getChordChart() const
+{
+    return str (chordsToChart (song.sections(), song.chords(), song.key(), song.timeSig()));
+}
+
+ChartImport BoothCueAudioProcessor::setChordChart (const juce::String& text)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    auto result = chartToChords (text.toStdString(), song.sections(), song.timeSig());
+    chordUndo = song.chords();
+    chordUndoEdited = chordsEdited;
+    hasChordUndo = true;
+    song.setChords (result.chords, song.key());
+    chordsEdited = true;
+    ++contentVersion;
+    updateStateSnapshot();
+    return result;
+}
+
+void BoothCueAudioProcessor::useDetectedChords()
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    chordUndo = song.chords();
+    chordUndoEdited = chordsEdited;
+    hasChordUndo = true;
+    chordsEdited = false;
+    song.setChords (detectedChords, detectedKey);
+    ++contentVersion;
+    updateStateSnapshot();
+}
+
+void BoothCueAudioProcessor::undoChords()
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    if (! hasChordUndo)
+        return;
+    song.setChords (chordUndo, song.key());
+    chordsEdited = chordUndoEdited;
+    hasChordUndo = false;
+    ++contentVersion;
+    updateStateSnapshot();
+}
+
+juce::String BoothCueAudioProcessor::getTimedLyrics() const
+{
+    return str (lyricsToTimedText (song));
 }
 
 // ---- tap-along (message thread) ----------------------------------------------------------
@@ -580,6 +638,7 @@ void BoothCueAudioProcessor::updateStateSnapshot()
         chords.setProperty (kTonic, song.key().tonic, nullptr);
         chords.setProperty (kMinor, song.key().minor, nullptr);
         chords.setProperty (kSummary, linkStatus.chordSummary, nullptr);
+        chords.setProperty (kEdited, chordsEdited, nullptr);
         for (const auto& c : song.chords())
         {
             juce::ValueTree t (kChord);
@@ -692,6 +751,8 @@ void BoothCueAudioProcessor::applyState (const juce::ValueTree& state)
             spans.push_back (span);
         }
         song.setChords (std::move (spans), Key { static_cast<int> (c.getProperty (kTonic, 0)), static_cast<bool> (c[kMinor]) });
+        chordsEdited = static_cast<bool> (c[kEdited]) && ! song.chords().empty();
+        hasChordUndo = false;
     }
 
     // Show the saved structure at once; the watcher re-reads the file (if it

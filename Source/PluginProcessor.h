@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "ChordChart.h"
 #include "Prompter.h"
 #include "SetWatcher.h"
 #include "Song.h"
@@ -103,6 +104,22 @@ public:
     void reloadSet();
     const LinkStatus& getLinkStatus() const noexcept                    { return linkStatus; }
 
+    // ---- the chords database (message thread) -----------------------------------
+    // The chords shown are BoothCue's own: detected from the set's MIDI after
+    // every save, until they are edited or imported as a chart. From then on
+    // they are kept as they are (detection still runs; useDetectedChords()
+    // switches back). BoothCue never writes to the set.
+    bool areChordsEdited() const noexcept                               { return chordsEdited; }
+    bool hasDetectedChords() const noexcept                             { return ! detectedChords.empty(); }
+    juce::String getChordChart() const;                // the chords as a chart (export / editing)
+    ChartImport setChordChart (const juce::String&);   // import / apply a chart: the chords become "edited"
+    void useDetectedChords();
+    bool canUndoChords() const noexcept                                 { return hasChordUndo; }
+    void undoChords();
+
+    // The lyrics with their timings, for export ("@bar.beat.16th" per tapped line).
+    juce::String getTimedLyrics() const;
+
     // ---- tap-along (message thread) --------------------------------------------
     struct TapSettings
     {
@@ -179,6 +196,12 @@ private:
 
     SetWatcher watcher;
     LinkStatus linkStatus;
+
+    std::vector<ChordSpan> detectedChords;
+    Key detectedKey;
+    bool chordsEdited = false;
+    std::vector<ChordSpan> chordUndo;
+    bool chordUndoEdited = false, hasChordUndo = false;
 
     TapSettings tapSettings;
     TapCursor tapCursor;

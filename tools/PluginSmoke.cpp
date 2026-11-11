@@ -324,9 +324,55 @@ namespace
             EXPECT (q.getSong().chords()[0].chord == song.chords()[0].chord && q.getSong().key().tonic == song.key().tonic);
         EXPECT (q.getLinkStatus().chordSummary == p.getLinkStatus().chordSummary);
 
+        // The chords database: a chart makes the chords "edited"; detection
+        // after a save no longer replaces them.
+        EXPECT (! p.areChordsEdited() && p.hasDetectedChords());
+        const auto chart = p.getChordChart();
+        EXPECT (chart.contains ("[Verse]") && chart.contains ("[Chorus]"));
+        auto import = p.setChordChart ("[Verse]\n| G | G | D/F# | Em |\n[Chorus]\n| C |\n");
+        EXPECT (import.partsFilled == 2 && import.unknown.empty());
+        EXPECT (p.areChordsEdited());
+        auto nameAt = [] (const BoothCueAudioProcessor& proc, double t)
+        {
+            const int i = proc.getSong().chordAt (t);
+            return i < 0 ? std::string ("-") : chordName (proc.getSong().chords()[static_cast<std::size_t> (i)].chord, proc.getSong().key());
+        };
+        EXPECT (nameAt (p, 1) == "G" && nameAt (p, 9) == "D/F#" && nameAt (p, 17) == "C" && nameAt (p, 21) == "-");
+        // A save in Live: detected again, kept aside.
+        const auto set = fixtures.getChildFile ("notes.als");
+        const auto copy = juce::File::createTempFile (".als");
+        EXPECT (set.copyFileTo (copy));
+        p.linkSet (copy);
+        EXPECT (waitFor (p, State::ok));
+        EXPECT (p.areChordsEdited() && nameAt (p, 1) == "G");
+        EXPECT (copy.setLastModificationTime (juce::Time::getCurrentTime() + juce::RelativeTime::seconds (5)));
+        pump (400);
+        EXPECT (p.areChordsEdited() && nameAt (p, 1) == "G");
+        // Saved with the set, edited flag and all.
+        {
+            juce::MemoryBlock saved;
+            p.getStateInformation (saved);
+            BoothCueAudioProcessor r;
+            r.setStateInformation (saved.getData(), static_cast<int> (saved.getSize()));
+            EXPECT (r.areChordsEdited() && nameAt (r, 9) == "D/F#");
+        }
+        // Back to the detected chords, and undo that.
+        p.useDetectedChords();
+        EXPECT (! p.areChordsEdited() && nameAt (p, 1) == "C");
+        EXPECT (p.canUndoChords());
+        p.undoChords();
+        EXPECT (p.areChordsEdited() && nameAt (p, 1) == "G");
+        // Lyrics with their timings, for export.
+        p.setLyrics (parseLyrics ("[Verse]\none\ntwo\n"));
+        Song withTap = p.getSong();
+        EXPECT (withTap.stamp (0, 1, 9.0));
+        p.setSong (withTap);
+        EXPECT (p.getTimedLyrics().contains ("@3.2.1 two"));
+        copy.deleteFile();
+
         // Unlinking clears them.
         p.unlinkSet();
-        EXPECT (p.getSong().chords().empty());
+        EXPECT (p.getSong().chords().empty() && ! p.areChordsEdited());
     }
 
     // Step 6: display / tap settings, the display window and the editor size
@@ -438,12 +484,22 @@ namespace
         std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());
         editor->setVisible (true);
         pump (100);
-        const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 2.0f);
+        auto snapshot = [&] (const juce::File& file)
+        {
+            const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 2.0f);
+            file.deleteFile();
+            juce::FileOutputStream stream (file);
+            juce::PNGImageFormat png;
+            EXPECT (stream.openedOk() && png.writeImageToStream (image, stream));
+        };
         juce::File file (out);
-        file.deleteFile();
-        juce::FileOutputStream stream (file);
-        juce::PNGImageFormat png;
-        EXPECT (stream.openedOk() && png.writeImageToStream (image, stream));
+        snapshot (file);
+        // The Chords tab too.
+        for (auto* child : editor->getChildren())
+            if (auto* b = dynamic_cast<juce::TextButton*> (child); b != nullptr && b->getButtonText() == "Chords")
+                b->triggerClick();
+        pump (150);
+        snapshot (file.getSiblingFile (file.getFileNameWithoutExtension() + "-chords.png"));
     }
 
     void run()

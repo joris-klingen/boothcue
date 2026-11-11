@@ -246,6 +246,14 @@ std::vector<LyricBlock> parseLyrics (const std::string& input, LyricImportReport
                 items.push_back ({ Item::Kind::gap, {}, {} });
             continue;
         }
+        // "# ..." is a comment (BoothCue's export starts with one), unless it
+        // is a section header written as a markdown heading ("## Bridge").
+        if (line[0] == '#')
+        {
+            Header h;
+            if (! parseHeader (line, h))
+                continue;
+        }
         if (isChordChart (line))
         {
             report.chordCharts.push_back (line);
@@ -392,10 +400,26 @@ std::vector<LyricBlock> parseLyrics (const std::string& input, LyricImportReport
                 text += " " + lines[++l];
                 ++report.pickupsJoined;
             }
+            // "@13.2.3 text": a start as a song position.
+            LyricLine line;
+            {
+                static const std::regex at (R"(^@(\d+)(?:\.(\d+))?(?:\.(\d+))?\s+(.*)$)");
+                std::smatch m;
+                if (std::regex_match (text, m, at))
+                {
+                    line.hasAt = true;
+                    line.atBar = std::stoi (m[1].str());
+                    line.atBeat = m[2].matched ? std::stoi (m[2].str()) : 1;
+                    line.atSixteenth = m[3].matched ? std::stoi (m[3].str()) : 1;
+                    text = m[4].str();
+                    ++report.timedLines;
+                }
+            }
             const int times = repeatCount (text);
             report.linesRepeated += times - 1;
+            line.text = text;
             for (int n = 0; n < times; ++n)
-                blocks.back().lines.push_back ({ text, -1.0 });
+                blocks.back().lines.push_back (line);
         }
     }
     settlePending();
@@ -403,6 +427,30 @@ std::vector<LyricBlock> parseLyrics (const std::string& input, LyricImportReport
     if (reportOut != nullptr)
         *reportOut = report;
     return blocks;
+}
+
+std::string lyricsToTimedText (const Song& song)
+{
+    const auto& blocks = song.blocks();
+    std::string out = "# BoothCue lyrics - \"@bar.beat.16th\" = where a tapped line starts\n\n";
+    for (std::size_t b = 0; b < blocks.size(); ++b)
+    {
+        // As lyricsToText: no blank line after opening lines without a header.
+        if (b > 0 && ! blocks[b].header.empty() && ! (b == 1 && blocks[0].header.empty()))
+            out += '\n';
+        if (! blocks[b].header.empty())
+            out += '[' + blocks[b].header + "]\n";
+        const int section = song.firstSectionForBlock (static_cast<int> (b));
+        for (std::size_t l = 0; l < blocks[b].lines.size(); ++l)
+        {
+            const auto& line = blocks[b].lines[l];
+            if (line.timed() && section >= 0)
+                out += "@" + formatPosition (song.sections()[static_cast<std::size_t> (section)].start + line.offset,
+                                             song.timeSig()) + " ";
+            out += line.text + '\n';
+        }
+    }
+    return out;
 }
 
 std::string lyricsToText (const std::vector<LyricBlock>& blocks)

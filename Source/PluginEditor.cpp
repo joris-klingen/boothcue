@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 
+#include "ChordChart.h"
 #include "LyricImport.h"
 #include "Song.h"
 #include "Theme.h"
@@ -245,6 +246,46 @@ BoothCueAudioProcessorEditor::BoothCueAudioProcessorEditor (BoothCueAudioProcess
     lyricsEditor.onTextChange = [this] { updateLyricButtons(); };
     addAndMakeVisible (lyricsEditor);
 
+    // Tabs.
+    for (auto* t : { &lyricsTab, &chordsTab })
+    {
+        t->setClickingTogglesState (false);
+        t->setColour (juce::TextButton::buttonOnColourId, theme::sectionNow.darker (0.3f));
+        addAndMakeVisible (*t);
+    }
+    lyricsTab.onClick = [this] { showTab (false); };
+    chordsTab.onClick = [this] { showTab (true); };
+
+    // Chords.
+    chordsEditor.setMultiLine (true, false);
+    chordsEditor.setReturnKeyStartsNewLine (true);
+    chordsEditor.setScrollbarsShown (true);
+    chordsEditor.setFont (juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 14.5f, juce::Font::plain)));
+    chordsEditor.setColour (juce::TextEditor::backgroundColourId, theme::sectionPast);
+    chordsEditor.setColour (juce::TextEditor::textColourId, theme::text);
+    chordsEditor.setColour (juce::TextEditor::outlineColourId, theme::faint);
+    chordsEditor.setTextToShowWhenEmpty ("Paste or type a chord chart, e.g.\n\n[verse]\n| Bbm | Ab | Eb . . Db | Bbm |\n\n"
+                                         "or a progression per kind of part:\nVerse/Chorus: ||: Am | F | C | G :||",
+                                         theme::dim);
+    chordsEditor.onTextChange = [this] { updateChordButtons(); };
+    addChildComponent (chordsEditor);
+    chordLoad.onClick = [this] { loadChordsFile(); };
+    chordSave.onClick = [this] { saveTextFile ("Save the chords as a chart", " - chords.txt", chordsEditor.getText()); };
+    chordApply.onClick = [this] { applyChords(); };
+    chordRevert.onClick = [this] { revertChords(); };
+    chordUndo.onClick = [this] { processor.undoChords(); chordNote = "Undone."; chordWarning = false; revertChords(); };
+    chordDetected.onClick = [this] { processor.useDetectedChords(); chordNote = {}; revertChords(); };
+    chordApply.setTooltip ("Use this chart: the chords become yours, detection after a save no longer replaces them");
+    chordDetected.setTooltip ("Back to the chords detected from the set's MIDI (follow every save again)");
+    chordSave.setTooltip ("Save the chart as a text file (import it with Load, or paste it)");
+    for (auto* b : { &chordLoad, &chordSave, &chordApply, &chordRevert, &chordUndo, &chordDetected })
+        addChildComponent (*b);
+
+    saveLyricsButton.onClick = [this] { saveTextFile ("Save the lyrics (with their timings)", " - lyrics.txt",
+                                                      processor.getTimedLyrics()); };
+    saveLyricsButton.setTooltip ("Save the lyrics as text, with \"@bar.beat\" in front of every tapped line (Load reads it back)");
+    addAndMakeVisible (saveLyricsButton);
+
     loadButton.onClick = [this] { loadLyricsFile(); };
     applyButton.onClick = [this] { applyLyrics(); };
     revertButton.onClick = [this] { revertLyrics(); };
@@ -304,7 +345,9 @@ BoothCueAudioProcessorEditor::BoothCueAudioProcessorEditor (BoothCueAudioProcess
     addAndMakeVisible (lineList);
 
     revertLyrics();   // the song's lyrics into the text box
+    revertChords();   // and its chords into the chart box
     pullSettings();
+    showTab (false);
 
     setResizable (true, true);
     setResizeLimits (860, 700, 2400, 1600);
@@ -484,6 +527,100 @@ juce::String BoothCueAudioProcessorEditor::linkText (juce::Colour& colour) const
     return {};
 }
 
+// ---- tabs, files, chords ---------------------------------------------------------------------
+
+void BoothCueAudioProcessorEditor::showTab (bool chords)
+{
+    showingChords = chords;
+    lyricsTab.setToggleState (! chords, juce::dontSendNotification);
+    chordsTab.setToggleState (chords, juce::dontSendNotification);
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &lyricsEditor, &loadButton, &saveLyricsButton,
+                                                                        &applyButton, &revertButton, &lineList, &tapButton,
+                                                                        &undoButton, &earlierButton, &laterButton,
+                                                                        &clearButton, &clearAllButton })
+        c->setVisible (! chords);
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &chordsEditor, &chordLoad, &chordSave, &chordApply,
+                                                                        &chordRevert, &chordUndo, &chordDetected })
+        c->setVisible (chords);
+    resized();
+    repaint();
+}
+
+void BoothCueAudioProcessorEditor::saveTextFile (const juce::String& title, const juce::String& suffix, const juce::String& text)
+{
+    const auto set = processor.getLinkStatus().file;
+    const auto folder = set != juce::File() ? set.getParentDirectory()
+                                             : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory);
+    const auto name = (set != juce::File() ? set.getFileNameWithoutExtension() : juce::String ("song")) + suffix;
+    chooser = std::make_unique<juce::FileChooser> (title, folder.getChildFile (name), "*.txt");
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                              | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [text] (const juce::FileChooser& fc)
+                          {
+                              const auto file = fc.getResult();
+                              if (file != juce::File())
+                                  file.replaceWithText (text, false, false, "\n");
+                          });
+}
+
+void BoothCueAudioProcessorEditor::loadChordsFile()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Load a chord chart (text)", processor.getLinkStatus().file.getParentDirectory(),
+                                                   "*.txt;*.text;*.md");
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                          [this] (const juce::FileChooser& fc)
+                          {
+                              const auto file = fc.getResult();
+                              if (! file.existsAsFile())
+                                  return;
+                              chordsEditor.setText (file.loadFileAsString(), false);
+                              applyChords();
+                          });
+}
+
+void BoothCueAudioProcessorEditor::applyChords()
+{
+    const auto result = processor.setChordChart (chordsEditor.getText());
+    juce::StringArray notes;
+    notes.add (juce::String (result.partsFilled) + " part" + (result.partsFilled == 1 ? "" : "s") + " filled, "
+               + juce::String (result.chords.size()) + " chords");
+    if (! result.unknown.empty())
+    {
+        juce::StringArray u;
+        for (const auto& w : result.unknown)
+            u.addIfNotAlreadyThere (str (w));
+        notes.add ("not chords: " + u.joinIntoString (" "));
+    }
+    if (! result.unmatched.empty())
+    {
+        juce::StringArray u;
+        for (const auto& w : result.unmatched)
+            u.add (str (w));
+        notes.add ("no part for " + u.joinIntoString (", "));
+    }
+    chordWarning = ! result.unknown.empty() || ! result.unmatched.empty() || result.partsFilled == 0;
+    chordNote = notes.joinIntoString ("; ");
+    revertChords();   // show the chart as BoothCue now has it (normalised)
+}
+
+void BoothCueAudioProcessorEditor::revertChords()
+{
+    chordsApplied = processor.getSong().chords().empty() && processor.getSong().sections().empty()
+                        ? juce::String() : processor.getChordChart();
+    chordsEditor.setText (chordsApplied, false);
+    updateChordButtons();
+}
+
+void BoothCueAudioProcessorEditor::updateChordButtons()
+{
+    const bool dirty = chordsEditor.getText() != chordsApplied;
+    chordApply.setEnabled (dirty);
+    chordRevert.setEnabled (dirty);
+    chordUndo.setEnabled (processor.canUndoChords());
+    chordDetected.setEnabled (processor.areChordsEdited() && processor.hasDetectedChords());
+    repaint (noteRow);
+}
+
 // ---- lyrics -----------------------------------------------------------------------------------
 
 void BoothCueAudioProcessorEditor::loadLyricsFile()
@@ -551,7 +688,7 @@ void BoothCueAudioProcessorEditor::updateLyricButtons()
     const bool dirty = lyricsEditor.getText() != appliedText;
     applyButton.setEnabled (dirty);
     revertButton.setEnabled (dirty);
-    repaint (lyricsTitle);
+    repaint (noteRow);
 }
 
 // ---- layout & paint ---------------------------------------------------------------------------
@@ -612,26 +749,54 @@ void BoothCueAudioProcessorEditor::resized()
 
     readoutArea = left;
 
-    // Right column: lyrics text over the line list.
-    lyricsTitle = area.removeFromTop (28);
-    auto buttons = lyricsTitle;
-    revertButton.setBounds (buttons.removeFromRight (80).reduced (0, 1));
-    buttons.removeFromRight (8);
-    applyButton.setBounds (buttons.removeFromRight (80).reduced (0, 1));
-    buttons.removeFromRight (8);
-    loadButton.setBounds (buttons.removeFromRight (110).reduced (0, 1));
-    area.removeFromTop (6);
+    // Right column: the tabs, then the lyrics (text over the line list) or the chord chart.
+    tabRow = area.removeFromTop (30);
+    {
+        auto row = tabRow;
+        lyricsTab.setBounds (row.removeFromLeft (84).reduced (0, 1));
+        lyricsTab.setConnectedEdges (juce::Button::ConnectedOnRight);
+        chordsTab.setBounds (row.removeFromLeft (84).reduced (0, 1));
+        chordsTab.setConnectedEdges (juce::Button::ConnectedOnLeft);
+        auto place = [&row] (juce::Button& b, int w) { b.setBounds (row.removeFromRight (w).reduced (0, 1)); row.removeFromRight (6); };
+        if (showingChords)
+        {
+            place (chordSave, 70);
+            place (chordLoad, 70);
+        }
+        else
+        {
+            place (revertButton, 70);
+            place (applyButton, 64);
+            place (saveLyricsButton, 70);
+            place (loadButton, 70);
+        }
+    }
+    if (showingChords)
+    {
+        // A second row: what to do with the chart.
+        area.removeFromTop (6);
+        auto row = area.removeFromTop (28);
+        for (auto* b : { &chordApply, &chordRevert, &chordUndo, &chordDetected })
+        {
+            b->setBounds (row.removeFromLeft (b == &chordDetected ? 110 : 70).reduced (0, 1));
+            row.removeFromLeft (6);
+        }
+        noteRow = area.removeFromTop (40).withTrimmedTop (4);
+        chordsEditor.setBounds (area);
+        return;
+    }
+    noteRow = area.removeFromTop (24).withTrimmedTop (4);
 
     lyricsEditor.setBounds (area.removeFromTop (juce::jmax (160, area.getHeight() * 2 / 5)));
     area.removeFromTop (10);
     linesTitle = area.removeFromTop (24);
     area.removeFromTop (4);
     auto taps = area.removeFromTop (32);
-    tapButton.setBounds (taps.removeFromLeft (110));
+    tapButton.setBounds (taps.removeFromLeft (96));
     for (auto* b : { &undoButton, &earlierButton, &laterButton, &clearButton, &clearAllButton })
     {
         taps.removeFromLeft (8);
-        b->setBounds (taps.removeFromLeft (b == &clearButton || b == &clearAllButton ? 84 : 64));
+        b->setBounds (taps.removeFromLeft (b == &clearButton ? 80 : b == &clearAllButton ? 70 : b == &undoButton ? 60 : 58));
     }
     area.removeFromTop (6);
     lineList.setBounds (area);
@@ -655,6 +820,12 @@ void BoothCueAudioProcessorEditor::timerCallback()
         const auto blocksText = str (lyricsToText (song.blocks()));
         if (blocksText != shownBlocksText && lyricsEditor.getText() == appliedText)
             revertLyrics();
+
+        // Chords changed (detected after a save, restored, undone): the chart box
+        // follows unless it holds edits not applied yet.
+        if (chordsEditor.getText() == chordsApplied && processor.getChordChart() != chordsApplied)
+            revertChords();
+        updateChordButtons();
 
         lineModel.rebuild();
         lineList.updateContent();
@@ -713,24 +884,47 @@ void BoothCueAudioProcessorEditor::paint (juce::Graphics& g)
     sectionTitle (g, { leftColumn.getX(), leftColumn.getY() + 66, leftColumn.getWidth(), 18 }, "Live set");
     sectionTitle (g, { leftColumn.getX(), linkArea.getBottom(), leftColumn.getWidth(), 18 }, "Singer display");
 
-    // Lyrics title, with a hint when the text box holds unapplied edits.
+    // Under the tabs: what the text box holds / where the chords come from.
     {
-        auto t = lyricsTitle;
-        sectionTitle (g, t.removeFromLeft (80).withTrimmedBottom (6), "Lyrics");
-        t.setRight (loadButton.getX() - 10);
+        auto t = noteRow;
         g.setFont (font (12.5f));
-        if (lyricsEditor.getText() != appliedText)
+        if (showingChords)
+        {
+            juce::String source;
+            auto colour = theme::dim;
+            if (processor.areChordsEdited())
+                source = "Your chart is in use (saved with the set). Detection after a save is kept aside"
+                         + juce::String (processor.hasDetectedChords() ? ": \"Use detected\" switches back." : ".");
+            else if (! processor.getSong().chords().empty())
+                source = "Detected from the set's MIDI, again after every save. Edit and Apply to keep your own chart.";
+            else
+                source = "No chords yet: link a set with MIDI, or paste / load a chart.";
+            if (chordsEditor.getText() != chordsApplied)
+            {
+                source = "Not applied yet.";
+                colour = theme::loop;
+            }
+            else if (chordNote.isNotEmpty())
+            {
+                source = chordNote + "\n" + source;
+                colour = chordWarning ? theme::loop : theme::dim;
+            }
+            g.setColour (colour);
+            g.drawFittedText (source, t, juce::Justification::topLeft, 2, 0.9f);
+        }
+        else if (lyricsEditor.getText() != appliedText)
         {
             g.setColour (theme::loop);
-            g.drawText ("not applied yet", t.withTrimmedBottom (6), juce::Justification::bottomLeft);
+            g.drawText ("Not applied yet.", t, juce::Justification::centredLeft);
         }
         else if (importNote.isNotEmpty())
         {
             g.setColour (importWarning ? theme::loop : theme::dim);
-            g.drawFittedText (importNote, t.withTrimmedBottom (4), juce::Justification::bottomLeft, 2, 0.9f);
+            g.drawFittedText (importNote, t, juce::Justification::centredLeft, 1, 0.85f);
         }
     }
     sectionTitle (g, tapTitle, "Tap-along");
+    if (! showingChords)
     {
         auto t = linesTitle;
         sectionTitle (g, t.removeFromLeft (60), "Lines");

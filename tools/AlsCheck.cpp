@@ -8,6 +8,7 @@
 //                                     (tools/alsmuse_crosscheck.py compares that with ALSmuse)
 
 #include "AlsParser.h"
+#include "ChordChart.h"
 #include "LyricImport.h"
 #include "Song.h"
 #include "SetChords.h"
@@ -271,6 +272,23 @@ int main (int argc, char** argv)
         return 0;
     }
 
+    if (argc >= 3 && std::strcmp (argv[1], "--chart") == 0)
+    {
+        // A set's detected chords as a BoothCue chart (the Chords tab's format).
+        const auto r = parseAlsFile (argv[2], "parts", true);
+        if (! r.ok)
+        {
+            std::fprintf (stderr, "error: %s\n", r.error.c_str());
+            return 1;
+        }
+        const auto c = chordsFromSet (r, 4.0);
+        std::vector<Section> sections;
+        for (const auto& sec : r.sections)
+            sections.push_back ({ sec.name, sec.start, sec.end, sec.color });
+        std::printf ("%s", chordsToChart (sections, c.result.spans, c.result.key, TimeSig()).c_str());
+        return 0;
+    }
+
     if (argc >= 3 && std::strcmp (argv[1], "--chords") == 0)
     {
         // A real set: its MIDI tracks, what the detector made of them, and the
@@ -350,7 +368,7 @@ int main (int argc, char** argv)
     if (argc < 2)
     {
         std::printf ("usage: als-check <fixtures-dir> | --dump <set.als> [track name]"
-                     " | --chords <set.als> [bar beats] [lyrics.txt]\n");
+                     " | --chords <set.als> [bar beats] [lyrics.txt] | --chart <set.als>\n");
         return 2;
     }
 

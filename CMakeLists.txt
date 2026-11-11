@@ -24,6 +24,7 @@ add_library(boothcue-core STATIC
     Source/Prompter.cpp
     Source/Chords.cpp
     Source/SetChords.cpp
+    Source/ChordChart.cpp
 )
 target_include_directories(boothcue-core PUBLIC Source)
 target_link_libraries(boothcue-core PUBLIC ZLIB::ZLIB)

@@ -146,6 +146,22 @@ void Song::setBlocks (std::vector<LyricBlock> b)
     rebuild();
 }
 
+double positionToPpq (int bar, int beat, int sixteenth, TimeSig sig)
+{
+    return (bar - 1) * sig.barLength() + (beat - 1) * sig.beatLength() + (sixteenth - 1) * 0.25;
+}
+
+void Song::setTimeSig (TimeSig sig)
+{
+    const bool changed = sig.num != sig_.num || sig.den != sig_.den;
+    sig_ = sig;
+    if (changed || std::abs (barLength_ - sig.barLength()) > kEps)
+    {
+        barLength_ = sig.barLength();
+        rebuild();
+    }
+}
+
 void Song::setBarLength (double beats)
 {
     beats = std::max (0.0, beats);
@@ -218,6 +234,28 @@ void Song::rebuild()
             auto base = blocksWithKey (key.substr (0, digitsAt));
             if (! base.empty())
                 sectionBlock_[i] = pick (base, std::atoi (key.c_str() + digitsAt));
+        }
+    }
+
+    // Lines imported with a song position ("@13.2.3"): their offset in the
+    // first section that sings their block.
+    for (std::size_t b = 0; b < blocks_.size(); ++b)
+    {
+        int first = -1;
+        for (std::size_t i = 0; i < sectionBlock_.size() && first < 0; ++i)
+            if (sectionBlock_[i] == static_cast<int> (b))
+                first = static_cast<int> (i);
+        if (first < 0)
+            continue;
+        const auto& sec = sections_[static_cast<std::size_t> (first)];
+        for (auto& l : blocks_[b].lines)
+        {
+            if (! l.hasAt)
+                continue;
+            const double offset = positionToPpq (l.atBar, l.atBeat, l.atSixteenth, sig_) - sec.start;
+            if (offset >= -kEps && offset < sec.length() - kEps)
+                l.offset = std::max (0.0, offset);
+            l.hasAt = false;
         }
     }
 

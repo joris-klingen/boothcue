@@ -23,12 +23,26 @@ struct Section
     double length() const { return end - start; }
 };
 
+struct TimeSig
+{
+    int num = 4, den = 4;
+    double beatLength() const { return 4.0 / (den > 0 ? den : 4); }
+    double barLength()  const { return (num > 0 ? num : 4) * beatLength(); }
+};
+
+// Bar 1 beat 1 = beat 0. "13.2.3" in 4/4 = 48 + 1 + 0.5.
+double positionToPpq (int bar, int beat, int sixteenth, TimeSig);
+
 struct LyricLine
 {
     std::string text;
     // Beats from the start of the section the line belongs to. Negative =
     // not tapped yet: such lines are spread evenly between their neighbours.
     double offset = -1.0;
+    // A start given as a song position ("@13.2.3" in imported text): turned
+    // into the offset once the block is linked to a section (Song::rebuild).
+    bool hasAt = false;
+    int atBar = 1, atBeat = 1, atSixteenth = 1;
     bool timed() const { return offset >= 0.0; }
 };
 
@@ -58,6 +72,9 @@ public:
     // Bar length in beats for spreading untimed lines (they land on bars, or
     // half / quarter bars when there are more lines than bars). 0 = no grid.
     void setBarLength (double beats);
+    // The time signature: the bar grid, and how "@bar.beat" positions read.
+    void setTimeSig (TimeSig);
+    TimeSig timeSig() const { return sig_; }
     double barLength() const { return barLength_; }
 
     const std::vector<Section>&    sections() const { return sections_; }
@@ -103,6 +120,7 @@ private:
     std::vector<Section>    sections_;
     std::vector<LyricBlock> blocks_;
     double                  barLength_ = 0.0;
+    TimeSig                 sig_;
     std::vector<int>        sectionBlock_;   // per section: block index or -1
     std::vector<Cue>        cues_;           // sorted by ppq
     std::vector<ChordSpan>  chords_;         // sorted by start
@@ -155,13 +173,6 @@ struct TapOutcome
 TapOutcome tapAt (Song&, TapCursor&, double ppq);
 
 // ---- bars, beats and the count-in ---------------------------------------------
-
-struct TimeSig
-{
-    int num = 4, den = 4;
-    double beatLength() const { return 4.0 / (den > 0 ? den : 4); }
-    double barLength()  const { return (num > 0 ? num : 4) * beatLength(); }
-};
 
 struct BarBeat
 {

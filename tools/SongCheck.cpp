@@ -3,6 +3,7 @@
 // placement, the current / next line, the count-in, bar/beat readout, loop
 // passes, and tap / nudge editing.
 
+#include "ChordChart.h"
 #include "LyricImport.h"
 #include "Prompter.h"
 #include "Song.h"
@@ -911,6 +912,124 @@ namespace
         EXPECT (! buildScene (song, at (26), ds).hasChords);
         EXPECT (! buildScene (makeSong(), at (26), DisplaySettings()).hasChords);
     }
+    std::string chordAtName (const std::vector<ChordSpan>& chords, double t, const Key& key = Key { 10, true })
+    {
+        for (const auto& c : chords)
+            if (t >= c.start - 1e-9 && t < c.end - 1e-9)
+                return chordName (c.chord, key);
+        return "-";
+    }
+
+    void chartTests()
+    {
+        const TimeSig sig;
+        const std::vector<Section> parts { sec ("intro", 0, 16), sec ("verse", 16, 48), sec ("chorus", 48, 64),
+                                           sec ("verse", 64, 96), sec ("chorus", 96, 112) };
+
+        // Notation: halves, "." beats, "-" no chord, empty bar = goes on, "%" = again.
+        auto r = chartToChords ("# a comment\n[intro]\n| Bbm | Eb/Bb Bbm | Ab . . Db | - |\n", parts, sig);
+        EXPECT (r.unknown.empty() && r.unmatched.empty() && r.partsFilled == 1);
+        EXPECT (chordAtName (r.chords, 0.5) == "Bbm" && chordAtName (r.chords, 4.5) == "Eb/Bb" && chordAtName (r.chords, 6.5) == "Bbm");
+        EXPECT (chordAtName (r.chords, 8.5) == "Ab" && chordAtName (r.chords, 10.5) == "Ab" && chordAtName (r.chords, 11.5) == "Db");
+        EXPECT (chordAtName (r.chords, 12.5) == "-");   // "-": no chord
+        r = chartToChords ("[verse]\n| Am | | % | Dm E(7b13) |\n", parts, sig);
+        EXPECT (chordAtName (r.chords, 16.5) == "Am" && chordAtName (r.chords, 20.5) == "Am");   // empty bar: goes on
+        EXPECT (chordAtName (r.chords, 24.5) == "Am" && chordAtName (r.chords, 28.5) == "Dm" && chordAtName (r.chords, 30.5) == "E7");
+        EXPECT (chordAtName (r.chords, 33) == "-");   // a [block] is played once, not looped
+        EXPECT (r.chords.size() == 3);   // Am merged across the bars
+
+        // [blocks] in song order: the 2nd [verse] goes to the 2nd verse.
+        r = chartToChords ("[verse]\n| C |\n[verse]\n| G |\n[bridge]\n| F |\n", parts, sig);
+        EXPECT (chordAtName (r.chords, 17) == "C" && chordAtName (r.chords, 65) == "G");
+        EXPECT (r.unmatched.size() == 1 && r.unmatched[0] == "[bridge]");
+
+        // Band chart lines: a progression per kind of part, looped to fill each,
+        // with repeats, alternatives and a continuation line.
+        r = chartToChords ("Verse/Chorus: ||: Am | | | Dm E(7b13) :||\nIntro: || Fm | Cm |\n   | Bb (Ab) | - ||\n", parts, sig);
+        EXPECT (r.unknown.empty() && r.partsFilled == 5);
+        EXPECT (chordAtName (r.chords, 1) == "Fm" && chordAtName (r.chords, 5) == "Cm" && chordAtName (r.chords, 9) == "Bb");
+        EXPECT (chordAtName (r.chords, 13) == "-");
+        EXPECT (chordAtName (r.chords, 17) == "Am" && chordAtName (r.chords, 29) == "Dm" && chordAtName (r.chords, 31) == "E7");
+        EXPECT (chordAtName (r.chords, 33) == "Am" && chordAtName (r.chords, 47) == "E7");   // looped through the verse
+        EXPECT (chordAtName (r.chords, 49) == "Am" && chordAtName (r.chords, 97) == "Am");   // and the choruses
+        // A [block] wins over a label for its part.
+        r = chartToChords ("Chorus: | Am |\n[chorus]\n| C |\n", parts, sig);
+        EXPECT (chordAtName (r.chords, 49) == "C" && chordAtName (r.chords, 97) == "Am");
+        // "x2", unknown tokens reported.
+        r = chartToChords ("[verse]\n| C | G | x2\n| Hmm |\n", parts, sig);
+        EXPECT (chordAtName (r.chords, 17) == "C" && chordAtName (r.chords, 25) == "C" && chordAtName (r.chords, 29) == "G");
+        EXPECT (chordAtName (r.chords, 33) == "G" && chordAtName (r.chords, 37) == "-");   // the unknown bar: G goes on, then the block ends
+        EXPECT (r.unknown.size() == 1 && r.unknown[0] == "Hmm");
+
+        // Export -> import gives the same chords (on beat resolution).
+        std::vector<ChordSpan> chords;
+        auto add = [&chords] (double a, double b, const char* n)
+        {
+            ChordSpan c; c.start = a; c.end = b; c.confidence = 0.7; parseChordName (n, c.chord); chords.push_back (c);
+        };
+        add (0, 6, "Bbm"); add (6, 8, "Eb/Bb"); add (8, 11, "Ab"); add (11, 16, "Db");
+        add (16, 40, "Am7"); add (44, 48, "E7"); add (48, 64, "F#m7b5"); add (64, 112, "G");
+        const auto text = chordsToChart (parts, chords, Key { 10, true }, sig);
+        EXPECT (text.find ("[intro]") != std::string::npos && text.find ("Ab . . Db") != std::string::npos);
+        r = chartToChords (text, parts, sig);
+        EXPECT (r.unknown.empty() && r.unmatched.empty() && r.partsFilled == 5);
+        for (double t = 0.5; t < 112; t += 1.0)
+            if (chordAtName (r.chords, t) != chordAtName (chords, t))
+            {
+                std::printf ("chart round trip differs at %.1f: %s vs %s\n", t, chordAtName (r.chords, t).c_str(),
+                             chordAtName (chords, t).c_str());
+                EXPECT (false);
+                break;
+            }
+        // 6/8 too.
+        const TimeSig six { 6, 8 };
+        const std::vector<Section> waltz { sec ("verse", 0, 12) };
+        std::vector<ChordSpan> c68;
+        { ChordSpan c; c.start = 0; c.end = 4.5; parseChordName ("D", c.chord); c68.push_back (c); }
+        { ChordSpan c; c.start = 4.5; c.end = 12; parseChordName ("A7", c.chord); c68.push_back (c); }
+        r = chartToChords (chordsToChart (waltz, c68, {}, six), waltz, six);
+        EXPECT (chordAtName (r.chords, 4.2) == "D" && chordAtName (r.chords, 4.7) == "A7" && chordAtName (r.chords, 11) == "A7");
+    }
+
+    void timedLyricsTests()
+    {
+        auto song = makeSong();   // Intro 0-16, Verse 1 16-48, Chorus 48-80, Verse 2 80-112, Chorus 112-144
+        song.setTimeSig (TimeSig());
+        EXPECT (near (positionToPpq (13, 2, 3, TimeSig()), 49.5));
+        EXPECT (song.stamp (2, 1, 57.5));   // "ch b" in the 1st chorus at 15.3.3
+        EXPECT (song.stamp (1, 0, 17.0));   // "v1 a" at 5.2.1
+
+        const auto text = lyricsToTimedText (song);
+        EXPECT (text.find ("@15.2.3 ch b") != std::string::npos && text.find ("@5.2.1 v1 a") != std::string::npos);
+        EXPECT (text.find ("@") == text.find ("@5.2.1") || text.find ("\"@") != std::string::npos);
+
+        // Into a fresh song: the timings come back.
+        Song fresh;
+        fresh.setSections (song.sections());
+        LyricImportReport rep;
+        fresh.setBlocks (parseLyrics (text, &rep));
+        EXPECT (rep.timedLines == 2);
+        EXPECT (fresh.blocks().size() == song.blocks().size());
+        if (fresh.blocks().size() == song.blocks().size())
+        {
+            EXPECT (near (fresh.blocks()[2].lines[1].offset, 9.5) && near (fresh.blocks()[1].lines[0].offset, 1.0));
+            EXPECT (! fresh.blocks()[2].lines[0].timed());
+        }
+        // A position outside the block's part is ignored; a line without a part keeps it pending.
+        auto blocks = parseLyrics ("[Chorus]\n@2.1.1 too early\n");
+        Song s2;
+        s2.setSections (song.sections());
+        s2.setBlocks (blocks);
+        EXPECT (! s2.blocks()[0].lines[0].timed() && s2.blocks()[0].lines[0].text == "too early");
+        Song s3;
+        s3.setBlocks (parseLyrics ("[Chorus]\n@13.1 later\n"));
+        EXPECT (! s3.blocks()[0].lines[0].timed());
+        s3.setSections (song.sections());
+        EXPECT (near (s3.blocks()[0].lines[0].offset, 0.0));
+        // Comments are skipped, markdown headings still are headers.
+        const auto b = parseLyrics ("# BoothCue lyrics\n## Chorus\nla\n");
+        EXPECT (b.size() == 1 && b[0].header == "Chorus" && b[0].lines.size() == 1);
+    }
 }
 
 int main (int argc, char** argv)
@@ -929,6 +1048,8 @@ int main (int argc, char** argv)
     tapPositionTests();
     importRuleTests();
     chordSceneTests();
+    chartTests();
+    timedLyricsTests();
     if (argc > 1)
         lyricFixtureTests (argv[1]);
     else
