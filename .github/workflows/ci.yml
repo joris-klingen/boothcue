@@ -7,52 +7,47 @@ on:
   workflow_dispatch:
 
 jobs:
-  macos:
-    name: macOS
-    runs-on: macos-14
+  plugin:
+    # The plugin itself on Linux: JUCE builds the same code on macOS, which is
+    # tested locally (in Live). Build, every test (the editor / display ones
+    # under a virtual display with a window manager), pluginval.
+    name: Plugin (Linux)
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q libasound2-dev libx11-dev libxext-dev libxrandr-dev libxinerama-dev \
+            libxcursor-dev libfreetype-dev libfontconfig1-dev zlib1g-dev xvfb openbox
+
       - name: Cache dependencies
         uses: actions/cache@v4
         with:
           path: build/_deps
-          key: deps-macos-${{ hashFiles('CMakeLists.txt') }}
+          key: deps-linux-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Configure
-        run: >
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        # Makefiles: a bare --parallel means unlimited "make -j", which exhausts the runner's memory.
-        run: cmake --build build --config Release --parallel "$(sysctl -n hw.ncpu)"
+        run: cmake --build build --parallel "$(nproc)"
 
-      - name: Unit tests
-        run: ctest --test-dir build -C Release --output-on-failure
-
-      - name: pluginval
+      - name: Tests and pluginval
+        # One step: the virtual display has to outlive both.
         run: |
-          curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
+          Xvfb :99 -screen 0 1920x1080x24 &
+          sleep 2
+          DISPLAY=:99 openbox &
+          sleep 2
+          export DISPLAY=:99
+          ctest --test-dir build --output-on-failure
+          curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Linux.zip
           unzip -q pluginval.zip
-          ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process \
-            build/BoothCue_artefacts/Release/VST3/BoothCue.vst3
-
-      - name: Package
-        # ditto keeps the bundles' signatures inside the zip.
-        run: |
-          mkdir -p dist/BoothCue
-          cp -R build/BoothCue_artefacts/Release/VST3/BoothCue.vst3 dist/BoothCue/
-          cp -R build/BoothCue_artefacts/Release/Standalone/BoothCue.app dist/BoothCue/
-          ditto -c -k --keepParent dist/BoothCue BoothCue-macOS.zip
-
-      - name: Upload package
-        uses: actions/upload-artifact@v4
-        with:
-          name: BoothCue-macOS
-          path: BoothCue-macOS.zip
+          ./pluginval --strictness-level 10 --validate-in-process build/BoothCue_artefacts/Release/VST3/BoothCue.vst3
 
   core:
     # The plain-C++ core and its checks only: quick feedback, no JUCE download.

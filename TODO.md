@@ -27,8 +27,10 @@ under "Done".
   The core is a static library `boothcue-core`; `-DBOOTHCUE_BUILD_PLUGIN=OFF`
   builds only the core and its checks.
   Verified on Linux: builds without warnings, pluginval strictness 10 passes.
-  **Not yet verified on macOS** (universal build): that is what CI's macOS
-  job does (`.github/workflows/ci.yml`: build, ctest, pluginval, zip).
+  CI (`.github/workflows/ci.yml`) builds and tests on Linux only: the plugin
+  (all tests under Xvfb + openbox, pluginval at strictness 10) and the core
+  (+ the ALSmuse cross-check). The macOS job was dropped (it never got a
+  runner); the Mac build and Live are tested locally by Joris.
 - **Singer display** (step 2) — `Source/Prompter.{h,cpp}` (plain C++:
   `DisplaySettings` with the four show toggles, `buildScene`, tested in
   `song-check`), `PrompterPainter` (draws a scene), `PrompterView` (30 Hz,
