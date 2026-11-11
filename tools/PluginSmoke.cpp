@@ -551,24 +551,36 @@ namespace
     }
 
     // With BOOTHCUE_EDITOR_PNG set: a snapshot of the editor with a linked set,
-    // for reviewing the layout without a host.
+    // for reviewing the layout without a host. BOOTHCUE_EDITOR_SET (a .als),
+    // BOOTHCUE_EDITOR_LYRICS (a .txt) and BOOTHCUE_EDITOR_BEAT take a real set
+    // instead of the fixture (the screenshots in docs/).
     void editorSnapshot (const juce::File& fixtures)
     {
         const auto out = juce::SystemStats::getEnvironmentVariable ("BOOTHCUE_EDITOR_PNG", {});
         if (out.isEmpty())
             return;
+        const auto realSet = juce::SystemStats::getEnvironmentVariable ("BOOTHCUE_EDITOR_SET", {});
         BoothCueAudioProcessor p;
-        p.linkSet (fixtures.getChildFile ("parts.als"));
+        p.linkSet (realSet.isNotEmpty() ? juce::File (realSet) : fixtures.getChildFile ("parts.als"));
         waitFor (p, State::ok);
-        auto blocks = parseLyrics ("[Verse 1]\nStreetlights hum a song I used to know\nEvery window glowing soft and low\n"
-                                   "[Chorus]\nHold on, hold on\nWe're running out of reasons to be wrong\n"
-                                   "[Verse 2]\nPaper boats are sailing down the drain\n[Bridge]\nOh-oh\n");
-        blocks[1].lines[1].offset = 9.5;
+        std::vector<LyricBlock> blocks;
+        if (realSet.isNotEmpty())
+        {
+            const juce::File lyrics (juce::SystemStats::getEnvironmentVariable ("BOOTHCUE_EDITOR_LYRICS", {}));
+            blocks = parseLyrics (lyrics.existsAsFile() ? lyrics.loadFileAsString().toStdString() : std::string());
+        }
+        else
+        {
+            blocks = parseLyrics ("[Verse 1]\nStreetlights hum a song I used to know\nEvery window glowing soft and low\n"
+                                  "[Chorus]\nHold on, hold on\nWe're running out of reasons to be wrong\n"
+                                  "[Verse 2]\nPaper boats are sailing down the drain\n[Bridge]\nOh-oh\n");
+            blocks[1].lines[1].offset = 9.5;
+        }
         p.setLyrics (blocks);
 
         // A position in the first chorus, so its line shows as being sung.
         FakePlayHead head;
-        head.info.setPpqPosition (60.0);
+        head.info.setPpqPosition (juce::SystemStats::getEnvironmentVariable ("BOOTHCUE_EDITOR_BEAT", "60").getDoubleValue());
         head.info.setBpm (96.0);
         head.info.setIsPlaying (true);
         p.setPlayHead (&head);
@@ -576,8 +588,11 @@ namespace
         juce::AudioBuffer<float> buffer (2, 256);
         juce::MidiBuffer midi;
         p.processBlock (buffer, midi);
-        p.setTapCursor (1, 1);
-        p.tap();
+        if (realSet.isEmpty())
+        {
+            p.setTapCursor (1, 1);
+            p.tap();
+        }
         p.setPlayHead (nullptr);
 
         std::unique_ptr<juce::AudioProcessorEditor> editor (p.createEditor());

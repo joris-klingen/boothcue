@@ -184,7 +184,8 @@ namespace
 
 // --set <set.als> [lyrics.txt] <out.png> [beat ...]: a real Live set (its
 // sections, the chords detected from its MIDI, the lyrics) at a few song
-// positions, at iPad 10.9" size, as a 2-column sheet.
+// positions, at iPad 10.9" size, as a 2-column sheet (one position: just
+// that display, for screenshots).
 int renderSet (int argc, char* argv[])
 {
     std::vector<std::string> args (argv + 2, argv + argc);
@@ -222,33 +223,47 @@ int renderSet (int argc, char* argv[])
             beats.push_back (song.sections()[i].start + 6.0);
 
     constexpr int w = 1180, h = 820, tileW = 944, tileH = 656, pad = 16, label = 34;
+    auto renderAt = [&] (double ppq)
+    {
+        TransportState t;
+        t.valid = t.playing = true;
+        t.ppq = ppq;
+        t.bpm = 120.0;
+        DisplaySettings settings;
+        juce::Image image (juce::Image::RGB, w, h, true);
+        juce::Graphics ig (image);
+        PrompterPainter painter;
+        painter.paint (ig, { 0, 0, w, h }, buildScene (song, t, settings), song, settings);
+        return image;
+    };
+    auto write = [&] (const juce::Image& image)
+    {
+        out.deleteFile();
+        juce::FileOutputStream stream (out);
+        juce::PNGImageFormat png;
+        return stream.openedOk() && png.writeImageToStream (image, stream);
+    };
+    if (beats.size() == 1)   // one position: the display itself, no sheet (screenshots)
+    {
+        if (! write (renderAt (beats.front())))
+            return 1;
+        std::printf ("prompter-render: wrote %s\n", out.getFullPathName().toRawUTF8());
+        return 0;
+    }
     const int rows = (static_cast<int> (beats.size()) + 1) / 2;
     juce::Image sheet (juce::Image::RGB, pad + 2 * (tileW + pad), pad + rows * (label + tileH + pad), true);
     juce::Graphics g (sheet);
     g.fillAll (juce::Colour (0xff1e2228));
     for (std::size_t i = 0; i < beats.size(); ++i)
     {
-        TransportState t;
-        t.valid = t.playing = true;
-        t.ppq = beats[i];
-        t.bpm = 120.0;
-        DisplaySettings settings;
-        juce::Image image (juce::Image::RGB, w, h, true);
-        {
-            juce::Graphics ig (image);
-            PrompterPainter painter;
-            painter.paint (ig, { 0, 0, w, h }, buildScene (song, t, settings), song, settings);
-        }
+        const auto image = renderAt (beats[i]);
         const int x = pad + static_cast<int> (i % 2) * (tileW + pad), y = pad + static_cast<int> (i / 2) * (label + tileH + pad);
         g.setColour (juce::Colours::white);
         g.setFont (juce::FontOptions (20.0f, juce::Font::bold));
         g.drawText ("beat " + juce::String (beats[i], 0), x, y, tileW, label - 6, juce::Justification::bottomLeft);
         g.drawImageWithin (image, x, y + label, tileW, tileH, juce::RectanglePlacement::centred);
     }
-    out.deleteFile();
-    juce::FileOutputStream stream (out);
-    juce::PNGImageFormat png;
-    if (! stream.openedOk() || ! png.writeImageToStream (sheet, stream))
+    if (! write (sheet))
         return 1;
     std::printf ("prompter-render: wrote %s (%zu positions, key %s, %zu chords)\n", out.getFullPathName().toRawUTF8(),
                  beats.size(), keyName (chords.result.key).c_str(), chords.result.spans.size());

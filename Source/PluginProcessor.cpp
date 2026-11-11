@@ -278,12 +278,18 @@ void BoothCueAudioProcessor::applyReport (const SetWatcher::Report& report)
         }
         else
         {
+            // A real set can have a dozen chord tracks: name a few, count the rest,
+            // so the status fits the editor.
             auto names = [] (const std::vector<std::string>& v)
             {
                 juce::StringArray a;
                 for (const auto& n : v)
-                    a.add (str (n));
-                return a.joinIntoString (", ");
+                    a.addIfNotAlreadyThere (str (n));
+                if (a.size() <= 3)
+                    return a.joinIntoString (", ");
+                const auto more = a.size() - 2;
+                a.removeRange (2, a.size());
+                return a.joinIntoString (", ") + " and " + juce::String (more) + " more";
             };
             auto text = "Chords from " + (c.chordTracks.empty() ? juce::String ("the bass") : names (c.chordTracks));
             if (! c.bassTracks.empty())

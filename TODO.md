@@ -160,8 +160,11 @@ identity and CI. Namespace `boothcue`. The core (`AlsParser`, `Song`,
 4. ~~Editor~~ — done, see "Done" above (tap controls come with step 5).
 5. ~~Tap-along~~ — done, see "Done" above.
 6. ~~State~~ — done, see "Done" above.
-7. **Docs and release** — `README.md`, `CLAUDE.md`, `STATUS.md`,
-   `installer/install.command` (VST3 + Standalone).
+7. ~~Docs and release~~ — done: `README.md` (user guide with screenshots in
+   `docs/`), `CLAUDE.md` (conventions, invariants, build, release),
+   `STATUS.md` (layers, verified, changelog), `installer/install.command`
+   (installs the VST3 + app next to it, harmeq style; CI builds no Mac
+   package, so a release folder is made on the Mac).
 8. **Real-set check** — started with "papa is even weg 3.3" (10 MB, read +
    chords in 0.5 s): sections identical to ALSmuse; choruses detected as
    Bbm | Bbm | Ab | Ab | Eb7 | Eb7 | Bbm | Bbm (key Bb minor). It showed: too
@@ -353,8 +356,6 @@ set, detects the chords and their timing, and shows them alongside the lyrics.
   note after a rest), from the starts of phrase-cut guide-vocal audio clips,
   or from arrangement locators. Joris: "maybe later".
 
-- Snap taps to a grid (off / half beat / beat) and a tap-latency offset.
-- Section colours from the clips' Live colours.
 - Time-signature changes inside a song.
 - Windows build (needs a zlib for the parser; JUCE's can be used there).
 - Out of scope for now: pitch display, meters, producer notes / talkback,
