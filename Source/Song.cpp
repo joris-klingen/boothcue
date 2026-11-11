@@ -48,6 +48,23 @@ std::string nameKey (const std::string& s)
     return out;
 }
 
+SectionKind sectionKind (const std::string& name)
+{
+    const auto key = nameKey (name);
+    std::size_t stem = 0;
+    while (stem < key.size() && key[stem] >= 'a' && key[stem] <= 'z')
+        ++stem;
+    const auto word = key.substr (0, stem);
+    if (word == "intro")                                    return SectionKind::intro;
+    if (word == "verse")                                    return SectionKind::verse;
+    if (word == "prechorus")                                return SectionKind::prechorus;
+    if (word == "chorus" || word == "hook")                 return SectionKind::chorus;
+    if (word == "bridge")                                   return SectionKind::bridge;
+    if (word == "outro" || word == "slot" || word == "coda" || word == "ending" || word == "end")
+        return SectionKind::outro;
+    return SectionKind::other;
+}
+
 std::vector<double> spreadOffsets (const LyricBlock& block, double length, double sectionStart, double barLength)
 {
     const auto n = block.lines.size();

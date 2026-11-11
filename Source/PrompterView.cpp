@@ -77,7 +77,8 @@ void PrompterView::timerCallback()
     now.width       = getWidth();
     now.height      = getHeight();
 
-    if (first || ! (now == shown))
+    // The ticker scrolls with the playhead: while playing, every tick.
+    if (first || ! (now == shown) || scene.playing)
     {
         first = false;
         shown = now;

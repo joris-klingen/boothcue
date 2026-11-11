@@ -130,6 +130,17 @@ under "Done".
   "?" on unsure chords; lyrics off = chords fill the screen (keys / guitar).
   The editor says which tracks the chords and bass come from and the key.
   Detected chords are saved with the set. **Not yet checked on a real set.**
+- **Display, three zoom levels** (after trying it on a 10" iPad): the whole
+  song (overview with the locator), a ticker of ~16 bars around the playhead
+  (a quarter behind, the rest ahead) with the chords at their changes, the
+  current one highlighted, bass notes under them, bar lines and numbers,
+  marks where lyric lines start and the host loop, and now (the lyrics; with
+  lyrics off: the chords now / next, big). Song parts are colour-coded in the
+  overview and as the ticker's backgrounds: intro yellow, verse blue, chorus
+  red, pre-chorus magenta, bridge purple, outro orange, others grey
+  (`sectionKind`, Dutch names included). Lyrics are fitted "one line first":
+  ordinary lines (~45 characters) stay on one line on a 10" iPad
+  (1180x820 / 1024x768, checked by `prompter-render`), only long ones wrap.
 - Tests: `ctest` runs `als-parser`, `chord-detect`, `song-logic`, `prompter-render`,
   `set-watcher` and `plugin-smoke` (the last three only with the plugin
   build; `plugin-smoke` needs a desktop session).

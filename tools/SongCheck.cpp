@@ -124,6 +124,14 @@ namespace
         keepTimings (rep, rep2);
         EXPECT (near (rep2[0].lines[0].offset, 1) && ! rep2[0].lines[1].timed() && near (rep2[0].lines[2].offset, 2));
 
+        EXPECT (sectionKind ("Intro") == SectionKind::intro && sectionKind ("Verse 2") == SectionKind::verse);
+        EXPECT (sectionKind ("Pre-Chorus") == SectionKind::prechorus && sectionKind ("pre") == SectionKind::prechorus);
+        EXPECT (sectionKind ("Chorus 3") == SectionKind::chorus && sectionKind ("Refrein") == SectionKind::chorus);
+        EXPECT (sectionKind ("Brug") == SectionKind::bridge && sectionKind ("Middle 8") == SectionKind::bridge);
+        EXPECT (sectionKind ("Outro") == SectionKind::outro && sectionKind ("Slot") == SectionKind::outro);
+        EXPECT (sectionKind ("Solo") == SectionKind::other && sectionKind ("") == SectionKind::other);
+        EXPECT (sectionKind ("Couplet 1") == SectionKind::verse);
+
         EXPECT (nameKey (" Verse-1 ") == "verse1");
         EXPECT (nameKey ("PRE CHORUS") == nameKey ("Pre-Chorus"));
         EXPECT (nameKey ("[]") .empty());

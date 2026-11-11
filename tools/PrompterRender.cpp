@@ -5,7 +5,7 @@
 //
 //   prompter-render [out.png] [single-scene.png]
 //       (default: previews/prompter-sheet.png; the second file, if given, gets
-//        one scene at 1920x1080)
+//        the first iPad-sized scene at its own size)
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -84,7 +84,11 @@ namespace
         TransportState transport;
         DisplaySettings settings;
         std::string tapNote = {};
+        int width = 0, height = 0;   // render size (0 = the tile); drawn scaled into the tile
+        int maxCurrentLines = 0;     // > 0: the check fails if the current line takes more lines
     };
+
+    DisplaySettings bassOn0() { return DisplaySettings(); }
 
     std::vector<Scene> scenes()
     {
@@ -102,6 +106,10 @@ namespace
         withChords.showBassNote = false;
         DisplaySettings noChords;
         noChords.showChords = false;
+        // On a 10" iPad: ordinary lines must stay on one line.
+        out.push_back ({ "iPad 10.9in (1180x820): long verse line", song, at (41.0, true, true), bassOn0(), {}, 1180, 820, 1 });
+        out.push_back ({ "iPad 10.2in (1024x768): chorus, chords", song, at (74.0, true, true), withChords, {}, 1024, 768, 1 });
+
         out.push_back ({ "Chords + lyrics (bass in the name)", song, at (26.0, true, true), withChords });
         DisplaySettings bassOn;
         out.push_back ({ "Chords + lyrics + bass note", song, at (26.0, true, true), bassOn });
@@ -140,6 +148,8 @@ namespace
         return out;
     }
 
+    int failures = 0;
+
     juce::Image render (const Scene& scene, int w, int h)
     {
         juce::Image image (juce::Image::RGB, w, h, true);
@@ -148,6 +158,12 @@ namespace
         auto built = buildScene (scene.song, scene.transport, scene.settings);
         built.tapNote = scene.tapNote;
         painter.paint (g, { 0, 0, w, h }, built, scene.song, scene.settings);
+        if (scene.maxCurrentLines > 0 && painter.lastCurrentLineCount() > scene.maxCurrentLines)
+        {
+            std::printf ("FAIL: \"%s\": the current line took %d lines\n", scene.title.toRawUTF8(),
+                         painter.lastCurrentLineCount());
+            ++failures;
+        }
         return image;
     }
 
@@ -185,7 +201,19 @@ int main (int argc, char* argv[])
             g.setColour (juce::Colours::white);
             g.setFont (juce::FontOptions (20.0f, juce::Font::bold));
             g.drawText (all[i].title, x, y, tileW, label - 6, juce::Justification::bottomLeft);
-            g.drawImageAt (render (all[i], tileW, tileH), x, y + label);
+            const auto& sc = all[static_cast<std::size_t> (i)];
+            if (sc.width > 0 && sc.height > 0)
+            {
+                // A device size: rendered at that size, shown scaled in the tile.
+                const auto image = render (sc, sc.width, sc.height);
+                g.setColour (juce::Colour (0xff101214));
+                g.fillRect (x, y + label, tileW, tileH);
+                g.drawImageWithin (image, x, y + label, tileW, tileH, juce::RectanglePlacement::centred);
+            }
+            else
+            {
+                g.drawImageAt (render (sc, tileW, tileH), x, y + label);
+            }
         }
     }
 
@@ -196,11 +224,17 @@ int main (int argc, char* argv[])
     }
     std::printf ("prompter-render: wrote %s (%d scenes)\n", outFile.getFullPathName().toRawUTF8(),
                  static_cast<int> (all.size()));
+    if (failures > 0)
+        return 1;
 
     if (argc > 2)
     {
         const auto single = juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]);
-        if (! writePng (render (all[2], 1920, 1080), single))
+        // The first device-sized scene at its own size (else a 1920x1080 one).
+        const Scene* pick = &all[2];
+        for (const auto& sc : all)
+            if (sc.width > 0) { pick = &sc; break; }
+        if (! writePng (render (*pick, pick->width > 0 ? pick->width : 1920, pick->height > 0 ? pick->height : 1080), single))
             return 1;
         std::printf ("prompter-render: wrote %s\n", single.getFullPathName().toRawUTF8());
     }

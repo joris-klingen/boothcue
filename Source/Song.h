@@ -120,6 +120,12 @@ private:
 std::vector<double> spreadOffsets (const LyricBlock&, double sectionLength,
                                    double sectionStart = 0.0, double barLength = 0.0);
 
+// What kind of part a section is, from its name (Dutch and short names too:
+// "Refrein 2" is a chorus, "Pre" a pre-chorus, "Brug" a bridge, "Slot" an
+// outro). Used for the colours on the display.
+enum class SectionKind { intro, verse, prechorus, chorus, bridge, outro, other };
+SectionKind sectionKind (const std::string& sectionName);
+
 // "Verse 1", "verse-1" and " VERSE 1 " all give "verse1"; Dutch and short
 // section words map to one name ("Refrein" -> "chorus", "Brug 2" -> "bridge2",
 // "Pre" / "Pre-Chorus" / "Voorrefrein" -> "prechorus", "Couplet" -> "verse").
