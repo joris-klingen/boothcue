@@ -20,7 +20,7 @@ namespace boothcue
 //   name    : <track>/Name/UserName, else <track>/Name/EffectiveName
 //   clips   : <track>/DeviceChain/MainSequencer/ClipTimeable/ArrangerAutomation/Events/MidiClip
 //   start   : MidiClip@Time        end : MidiClip/CurrentEnd@Value
-//   name    : MidiClip/Name@Value
+//   name    : MidiClip/Name@Value       colour : MidiClip/Color@Value (palette index)
 // and, with readNotes, per MIDI track:
 //   notes   : MidiClip/Notes/KeyTracks/KeyTrack/{Notes/MidiNoteEvent@Time,Duration,
 //             Velocity,IsEnabled ; MidiKey@Value}   (times in clip content beats)
@@ -38,6 +38,7 @@ struct AlsSection
     std::string name;
     double start = 0.0;   // beats
     double end   = 0.0;   // beats
+    int color = -1;       // the clip's colour: an index into Live's 70-colour palette, -1 = none
 };
 
 // A MIDI note placed in the arrangement (clip loops unrolled, start marker

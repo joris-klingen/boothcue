@@ -59,6 +59,8 @@ namespace
         EXPECT (is (r.sections[5], "Bridge & \"Solo\"", 144, 162));   // entities decoded, 4.5 bars
         EXPECT (is (r.sections[6], "Chorus", 162, 226));
         EXPECT (is (r.sections[7], "Outro", 234, 250));               // after a 2-bar gap
+        // Clip colours (the fixture gives clip i colour i).
+        EXPECT (r.sections[0].color == 0 && r.sections[2].color == 2 && r.sections[7].color == 7);
     }
 
     void fixtureTests (const std::string& dir)
@@ -293,7 +295,7 @@ int main (int argc, char** argv)
         Song song;
         std::vector<Section> sections;
         for (const auto& sec : r.sections)
-            sections.push_back ({ sec.name, sec.start, sec.end });
+            sections.push_back ({ sec.name, sec.start, sec.end, sec.color });
         song.setSections (sections);
         if (! lyricsPath.empty())
         {

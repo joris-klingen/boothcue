@@ -142,6 +142,16 @@ namespace
         return k;
     }
 
+    // 1b. The same with a bass instrument's sound selector: a low E (MIDI 28)
+    //     held under everything, as MODO BASS keyswitches are. Ignored.
+    Case keyswitch()
+    {
+        auto k = blockChords();
+        k.name = "Muggenseizoen: + a held keyswitch note (E, MIDI 28)";
+        k.input.notes.push_back ({ 0.0, 32.0, 28, 100, 1 });
+        return k;
+    }
+
     // 2. Arpeggiated eighths, no bass track: the lowest note is the bass.
     Case arpeggios()
     {
@@ -399,6 +409,7 @@ int main (int argc, char** argv)
     const auto block = blockChords();
     EXPECT (run (block) >= 0.99);
     EXPECT (run (block, true) >= 0.99);
+    EXPECT (run (keyswitch(), true) >= 0.99);
     EXPECT (run (arpeggios()) >= 0.90);
     EXPECT (run (embellished()) >= 0.90);
     const auto inv = inversions();

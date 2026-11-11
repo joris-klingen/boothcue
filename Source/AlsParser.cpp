@@ -152,6 +152,12 @@ namespace
             }
             else if (rel == kClipEnd)   clipHasEnd = parseDouble (attribute (attrs, "Value"), clip.end);
             else if (rel == kClipName)  clip.name = attribute (attrs, "Value");
+            else if (rel == kClipColor)
+            {
+                double v = -1.0;
+                if (parseDouble (attribute (attrs, "Value"), v) && v >= 0.0 && v < 70.0)
+                    clip.color = static_cast<int> (v);
+            }
             else if (readNotes)
                 noteElement (name, attrs);
         }
@@ -360,6 +366,7 @@ namespace
         const std::string kClip     = "/DeviceChain/MainSequencer/ClipTimeable/ArrangerAutomation/Events/MidiClip";
         const std::string kClipEnd  = kClip + "/CurrentEnd";
         const std::string kClipName = kClip + "/Name";
+        const std::string kClipColor = kClip + "/Color";
 
         std::string wanted;
         bool readNotes = false;

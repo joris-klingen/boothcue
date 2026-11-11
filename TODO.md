@@ -173,6 +173,17 @@ identity and CI. Namespace `boothcue`. The core (`AlsParser`, `Song`,
    roles, chords per bar under the sections, lyric linking) and
    `prompter-render --set <set.als> [lyrics.txt] <out.png> [beat ...]` (the
    real display at iPad size). The set itself is not committed (private, 10 MB).
+   Follow-up: the "E" came from MODO BASS sound-selector notes (MIDI 25 / 28 /
+   31, held long); notes below MIDI 33 ("A0" in Live's names) are now left
+   out of chord and bass detection (ChordSettings::lowestPitch), before the
+   track roles are decided. The verses now read Bbm | Ab | Eb | Bbm.
+   The set was edited by hand (both Parts tracks: the detached alternative
+   intro removed, every part named by its clip colour: 17 intro, 22 verse,
+   26 pre, 14 chorus, 7 bridge); all its sections now link to the lyrics.
+- **Live's clip colours** — each part is drawn in its clip's colour from the
+  set (Live's 70-colour palette, by the index the clip stores), so the
+  display matches Live; parts without a clip colour fall back to the colour
+  by kind. Saved with the state.
 
 ### Display toggles
 

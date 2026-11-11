@@ -300,8 +300,7 @@ void PrompterPainter::paintTimeline (juce::Graphics& g, juce::Rectangle<float> a
 
         const bool now  = static_cast<int> (i) == s.section;
         const bool past = s.hasPosition && sec.end <= s.ppq;
-        const auto kind = sectionKind (sec.name);
-        const auto colour = theme::sectionColour (kind);
+        const auto colour = theme::partColour (sec);
         g.setColour (now ? colour : colour.withMultipliedSaturation (past ? 0.45f : 0.8f)
                                           .withMultipliedBrightness (past ? 0.35f : 0.6f));
         g.fillRoundedRectangle (block, 0.4f * unit);
@@ -313,7 +312,7 @@ void PrompterPainter::paintTimeline (juce::Graphics& g, juce::Rectangle<float> a
 
         if (block.getWidth() > 3.0f * unit)
         {
-            g.setColour (now ? theme::sectionInk (kind) : past ? theme::text.withAlpha (0.45f) : theme::text.withAlpha (0.9f));
+            g.setColour (now ? theme::inkOn (colour) : past ? theme::text.withAlpha (0.45f) : theme::text.withAlpha (0.9f));
             g.drawFittedText (sectionName (song, static_cast<int> (i)),
                               block.reduced (0.8f * unit, 0.0f).toNearestInt(),
                               juce::Justification::centredLeft, 1, 1.0f);
@@ -530,8 +529,7 @@ void PrompterPainter::paintTicker (juce::Graphics& g, juce::Rectangle<float> are
         if (sec.end <= left || sec.start >= right)
             continue;
         const float x0 = x (std::max (sec.start, left)), x1 = x (std::min (sec.end, right));
-        const auto kind = sectionKind (sec.name);
-        const auto colour = theme::sectionColour (kind);
+        const auto colour = theme::partColour (sec);
         const bool now = s.hasPosition && s.ppq >= sec.start && s.ppq < sec.end;
         const bool past = s.hasPosition && sec.end <= s.ppq;
         g.setColour (colour.withAlpha (past ? 0.14f : now ? 0.42f : 0.30f));

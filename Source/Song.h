@@ -19,6 +19,7 @@ struct Section
     std::string name;
     double start = 0.0;
     double end   = 0.0;
+    int color = -1;      // the clip colour in Live (palette index 0..69), -1 = unknown
     double length() const { return end - start; }
 };
 

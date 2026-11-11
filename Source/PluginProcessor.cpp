@@ -26,6 +26,7 @@ namespace
     const juce::Identifier kName     { "name" };
     const juce::Identifier kStart    { "start" };
     const juce::Identifier kEnd      { "end" };
+    const juce::Identifier kColour   { "colour" };   // Live clip colour (palette index)
 
     // <Lyrics>
     //   <Block header="Chorus"><Line text="Hold on" offset="2.5"/> … </Block> …
@@ -251,7 +252,7 @@ void BoothCueAudioProcessor::applyReport (const SetWatcher::Report& report)
     {
         std::vector<Section> sections;
         for (const auto& s : report.result.sections)
-            sections.push_back ({ s.name, s.start, s.end });
+            sections.push_back ({ s.name, s.start, s.end, s.color });
 
         linkStatus.state        = LinkStatus::State::ok;
         linkStatus.error        = {};
@@ -537,6 +538,8 @@ void BoothCueAudioProcessor::updateStateSnapshot()
             t.setProperty (kName, juce::String::fromUTF8 (sec.name.c_str()), nullptr);
             t.setProperty (kStart, sec.start, nullptr);
             t.setProperty (kEnd, sec.end, nullptr);
+            if (sec.color >= 0)
+                t.setProperty (kColour, sec.color, nullptr);
             set.appendChild (t, nullptr);
         }
         state.appendChild (set, nullptr);
@@ -652,7 +655,8 @@ void BoothCueAudioProcessor::applyState (const juce::ValueTree& state)
     for (const auto& t : set)
         if (t.hasType (kSection))
             sections.push_back ({ t[kName].toString().toStdString(),
-                                  static_cast<double> (t[kStart]), static_cast<double> (t[kEnd]) });
+                                  static_cast<double> (t[kStart]), static_cast<double> (t[kEnd]),
+                                  static_cast<int> (t.getProperty (kColour, -1)) });
 
     std::vector<LyricBlock> blocks;
     for (const auto& b : state.getChildWithName (kLyrics))

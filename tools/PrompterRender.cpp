@@ -209,7 +209,7 @@ int renderSet (int argc, char* argv[])
     Song song;
     std::vector<Section> sections;
     for (const auto& sec : set.sections)
-        sections.push_back ({ sec.name, sec.start, sec.end });
+        sections.push_back ({ sec.name, sec.start, sec.end, sec.color });
     song.setSections (sections);
     song.setBarLength (4.0);
     song.setBlocks (parseLyrics (lyrics));

@@ -620,8 +620,17 @@ namespace
     }
 }
 
-ChordResult detectChords (const ChordInput& in, double songEnd, const ChordSettings& settings)
+ChordResult detectChords (const ChordInput& input, double songEnd, const ChordSettings& settings)
 {
+    // Notes below the floor (sound selectors / keyswitches) are left out before
+    // anything else, so they can't change a track's role either.
+    ChordInput in;
+    in.tracks = input.tracks;
+    in.notes.reserve (input.notes.size());
+    for (const auto& n : input.notes)
+        if (n.pitch >= settings.lowestPitch)
+            in.notes.push_back (n);
+
     ChordResult result;
     result.roles = decideRoles (in);
     auto notes = clean (in, result.roles, settings);

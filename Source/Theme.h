@@ -37,10 +37,43 @@ inline juce::Colour sectionColour (SectionKind kind)
     return juce::Colour (0xff6b7480);
 }
 
-// Text that reads on the full section colour.
+// Live's 70 clip colours (Live 10-12), by the index a clip stores in the set:
+// 14 columns x 5 rows, row by row. Values sampled from Live's colour picker
+// (github.com/danhemerlein/ableton-colors).
+inline juce::Colour liveClipColour (int index)
+{
+    static const juce::uint32 palette[70] = {
+        0xfffd95a7, 0xfffda43a, 0xffcb9834, 0xfff7f384, 0xffc0f932, 0xff32fd42, 0xff39fdaa,
+        0xff65fee8, 0xff8dc6fd, 0xff5682e1, 0xff93a9fc, 0xffd670e2, 0xffe3569f, 0xffffffff,
+        0xfffc393d, 0xfff46c20, 0xff98714e, 0xfffeee4a, 0xff8bfd70, 0xff44c121, 0xff1ebeaf,
+        0xff31e9fd, 0xff22a5eb, 0xff127ebe, 0xff8870e1, 0xffb579c4, 0xfffd42d2, 0xffd0d0d0,
+        0xffe0685d, 0xfffda378, 0xffd2ac75, 0xffedfeb2, 0xffd2e39c, 0xffbacf79, 0xff9cc38f,
+        0xffd5fde2, 0xffcef1f8, 0xffb9c2e2, 0xffcdbce3, 0xffae9ae3, 0xffe5dce1, 0xffa9a9a9,
+        0xffc5928c, 0xffb68259, 0xff98836b, 0xffbfb96e, 0xffa6bc25, 0xff7eaf52, 0xff8ac2ba,
+        0xff9cb3c3, 0xff86a5c1, 0xff8494ca, 0xffa596b4, 0xffbea0bd, 0xffbb7296, 0xff7b7b7b,
+        0xffad3436, 0xffa75135, 0xff714f42, 0xffdac229, 0xff85952b, 0xff559e38, 0xff1b9b8e,
+        0xff266383, 0xff1b3393, 0xff3154a0, 0xff624eab, 0xffa24eab, 0xffca326e, 0xff3c3c3c
+    };
+    return index >= 0 && index < 70 ? juce::Colour (palette[index]) : juce::Colour (0xff6b7480);
+}
+
+// A song part's colour: the colour of its clip in Live when known (so the
+// display matches the set exactly), else one by kind of part.
+inline juce::Colour partColour (const Section& section)
+{
+    return section.color >= 0 && section.color < 70 ? liveClipColour (section.color)
+                                                     : sectionColour (sectionKind (section.name));
+}
+
+// Text that reads on a full part colour: dark on light colours.
+inline juce::Colour inkOn (juce::Colour fill)
+{
+    return fill.getPerceivedBrightness() > 0.62f ? juce::Colour (0xff15171a) : text;
+}
+
 inline juce::Colour sectionInk (SectionKind kind)
 {
-    return kind == SectionKind::intro || kind == SectionKind::outro ? juce::Colour (0xff15171a) : text;
+    return inkOn (sectionColour (kind));
 }
 
 }  // namespace boothcue::theme

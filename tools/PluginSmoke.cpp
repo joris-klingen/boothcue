@@ -100,6 +100,7 @@ namespace
         EXPECT (waitFor (p, State::ok));
         EXPECT (p.getSong().sections().size() == 8);
         EXPECT (p.getLinkStatus().sections == 8 && p.getLinkStatus().trackName == "Parts");
+        EXPECT (p.getSong().sections()[1].color == 1);   // Live clip colours come along
         EXPECT (! p.getLinkStatus().usedFallback);
 
         // Lyrics stay linked across a re-read: they belong to the song, not the file.
@@ -144,6 +145,7 @@ namespace
             q.setStateInformation (saved.getData(), static_cast<int> (saved.getSize()));
             EXPECT (waitFor (q, State::missing));
             EXPECT (q.getSong().sections().size() == 8);
+            EXPECT (q.getSong().sections()[1].color == 1);   // saved with the state
             EXPECT (q.getLinkStatus().sections == 8);
             // Its own state still points at the file, so it relinks when it's back.
             BoothCueAudioProcessor r;
