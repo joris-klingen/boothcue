@@ -5,12 +5,14 @@
 //
 //   prompter-render [out.png] [single-scene.png]
 //   prompter-render --set <set.als> [lyrics.txt] <out.png> [beat ...]
+//   prompter-render --midi <set.als> <out.mid>
 //       (default: previews/prompter-sheet.png; the second file, if given, gets
 //        the first iPad-sized scene at its own size)
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "AlsParser.h"
+#include "ChordMidi.h"
 #include "Chords.h"
 #include "LyricImport.h"
 #include "SetChords.h"
@@ -253,9 +255,34 @@ int renderSet (int argc, char* argv[])
     return 0;
 }
 
+// --midi <set.als> <out.mid>: a set's detected chords as the MIDI file the
+// plugin's "Drag MIDI" gives.
+int renderMidi (int argc, char* argv[])
+{
+    if (argc < 4)
+        return 2;
+    const auto set = parseAlsFile (argv[2], "parts", true);
+    if (! set.ok)
+    {
+        std::printf ("prompter-render: %s\n", set.error.c_str());
+        return 1;
+    }
+    const auto chords = chordsFromSet (set, 4.0);
+    const auto out = juce::File::getCurrentWorkingDirectory().getChildFile (juce::String::fromUTF8 (argv[3]));
+    const auto name = out.getFileNameWithoutExtension();
+    if (! writeChordsMidi (out, chords.result.spans, chords.result.key, TimeSig(), 120.0, name))
+        return 1;
+    std::printf ("prompter-render: wrote %s (%zu chords, key %s)\n", out.getFullPathName().toRawUTF8(),
+                 chords.result.spans.size(), keyName (chords.result.key).c_str());
+    return 0;
+}
+
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI gui;
+
+    if (argc > 1 && std::string (argv[1]) == "--midi")
+        return renderMidi (argc, argv);
 
     if (argc > 1 && std::string (argv[1]) == "--set")
         return renderSet (argc, argv);

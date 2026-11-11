@@ -319,6 +319,18 @@ ChartImport BoothCueAudioProcessor::setChordChart (const juce::String& text)
     return result;
 }
 
+void BoothCueAudioProcessor::setImportedChords (std::vector<ChordSpan> chords, Key key)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    chordUndo = song.chords();
+    chordUndoEdited = chordsEdited;
+    hasChordUndo = true;
+    song.setChords (std::move (chords), key);
+    chordsEdited = true;
+    ++contentVersion;
+    updateStateSnapshot();
+}
+
 void BoothCueAudioProcessor::useDetectedChords()
 {
     JUCE_ASSERT_MESSAGE_THREAD

@@ -23,6 +23,7 @@ namespace boothcue
 // space here, when the host passes the key on; always in the display window)
 // stamps it at the playhead and moves on to the next line.
 class BoothCueAudioProcessorEditor final : public juce::AudioProcessorEditor,
+                                           public juce::FileDragAndDropTarget,
                                            private juce::Timer
 {
 public:
@@ -32,6 +33,14 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     bool keyPressed (const juce::KeyPress&) override;
+    void paintOverChildren (juce::Graphics&) override;
+
+    // Drop a file on the window: .mid -> chords, .txt -> the open tab's text
+    // (chart or lyrics), .als -> link that set.
+    bool isInterestedInFileDrag (const juce::StringArray&) override;
+    void fileDragEnter (const juce::StringArray&, int, int) override { dropHover = true; repaint(); }
+    void fileDragExit (const juce::StringArray&) override               { dropHover = false; repaint(); }
+    void filesDropped (const juce::StringArray&, int, int) override;
 
 private:
     // The line list: one row per block header, one per line, and a note
@@ -74,6 +83,25 @@ private:
     void syncSelectionToCursor();
     bool selectedLine (int& block, int& line) const;
 
+    // "Drag MIDI": drag it into Live (a chord clip), or click it to save the .mid.
+    class MidiDragHandle final : public juce::Component, public juce::SettableTooltipClient
+    {
+    public:
+        std::function<juce::File()> makeFile;
+        std::function<void()> onClick;
+        void paint (juce::Graphics&) override;
+        void mouseDrag (const juce::MouseEvent&) override;
+        void mouseUp (const juce::MouseEvent&) override;
+        void mouseEnter (const juce::MouseEvent&) override { repaint(); }
+        void mouseExit (const juce::MouseEvent&) override  { repaint(); }
+    private:
+        bool dragging = false;
+    };
+
+    juce::File writeChordsMidiForDrag();
+    void saveChordsMidi();
+    void importChordsMidi (const juce::File&);
+    juce::String songName() const;
     void showTab (bool chords);
     void saveTextFile (const juce::String& title, const juce::String& suffix, const juce::String& text);
     void applyChords();
@@ -127,6 +155,7 @@ private:
     juce::TextButton clearButton    { "Clear line" };
     juce::TextButton clearAllButton { "Clear all" };
     bool syncingSelection = false;
+    bool dropHover = false;
 
     // ---- right: tabs ----
     juce::TextButton lyricsTab { "Lyrics" }, chordsTab { "Chords" };
@@ -136,6 +165,7 @@ private:
     // ---- right: chords ----
     juce::TextButton chordLoad { "Load..." }, chordSave { "Save..." }, chordApply { "Apply" },
                      chordRevert { "Revert" }, chordUndo { "Undo" }, chordDetected { "Use detected" };
+    MidiDragHandle chordMidi;
     juce::TextEditor chordsEditor;
     juce::String chordsApplied;     // what the chart box held when last applied / shown
     juce::String chordNote;         // what the last chart import noticed

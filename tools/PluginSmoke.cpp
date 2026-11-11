@@ -14,6 +14,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "ChordMidi.h"
 #include "LyricImport.h"
 #include "PluginProcessor.h"
 
@@ -375,6 +376,104 @@ namespace
         EXPECT (p.getSong().chords().empty() && ! p.areChordsEdited());
     }
 
+    // The chords as a MIDI file (drag into Live / save) and back.
+    void chordMidiTests()
+    {
+        std::vector<ChordSpan> chords;
+        auto add = [&chords] (double a, double b, const char* n)
+        {
+            ChordSpan c; c.start = a; c.end = b; c.confidence = 0.9; parseChordName (n, c.chord); chords.push_back (c);
+        };
+        add (0, 4, "Bbm"); add (4, 6, "Eb/Bb"); add (6, 8, "Bbm"); add (8, 16, "Ab"); add (20, 24, "Eb7"); add (24, 28, "Gbmaj7");
+        const Key key { 10, true };
+        const TimeSig sig;
+
+        // The voicing: root position around middle C, the bass in octave 2.
+        Chord c;
+        parseChordName ("C/E", c);
+        EXPECT (chordVoicing (c) == std::vector<int> ({ 60, 64, 67, 40 }));
+        parseChordName ("Bbm", c);
+        EXPECT (chordVoicing (c) == std::vector<int> ({ 58, 61, 65, 46 }));
+
+        const auto file = juce::File::createTempFile (".mid");
+        EXPECT (writeChordsMidi (file, chords, key, sig, 96.0, "papa chords"));
+        {
+            juce::FileInputStream in (file);
+            juce::MidiFile midi;
+            EXPECT (midi.readFrom (in) && midi.getNumTracks() == 1 && midi.getTimeFormat() == 960);
+            int ons = 0, texts = 0;
+            bool tempo = false, timeSig = false;
+            const auto* seq = midi.getTrack (0);
+            for (int i = 0; i < seq->getNumEvents(); ++i)
+            {
+                const auto& m = seq->getEventPointer (i)->message;
+                ons += m.isNoteOn() ? 1 : 0;
+                texts += m.isTextMetaEvent() && m.getMetaEventType() == 1 ? 1 : 0;
+                tempo = tempo || (m.isTempoMetaEvent() && std::abs (m.getTempoSecondsPerQuarterNote() - 60.0 / 96.0) < 1e-4);
+                timeSig = timeSig || m.isTimeSignatureMetaEvent();
+            }
+            if (! (ons == 4 + 4 + 4 + 4 + 5 + 5 && texts == 6 && tempo && timeSig))
+                std::printf ("midi: ons %d texts %d tempo %d timesig %d\n", ons, texts, tempo, timeSig);
+            EXPECT (ons == 4 + 4 + 4 + 4 + 5 + 5 && texts == 6 && tempo && timeSig);   // triads 3 + bass, Eb7 / Gbmaj7 4 + bass
+        }
+
+        // Back: by the names, exactly.
+        auto r = chordsFromMidiFile (file, sig);
+        EXPECT (r.ok && r.fromNames && r.chords.size() == chords.size());
+        if (r.chords.size() == chords.size())
+            for (std::size_t i = 0; i < chords.size(); ++i)
+            {
+                EXPECT (r.chords[i].chord == chords[i].chord);
+                EXPECT (std::abs (r.chords[i].start - chords[i].start) < 1e-3 && std::abs (r.chords[i].end - chords[i].end) < 2e-3);
+            }
+
+        // Without the names: detected from the notes, the same chords.
+        {
+            juce::FileInputStream in (file);
+            juce::MidiFile midi;
+            midi.readFrom (in);
+            juce::MidiMessageSequence plain;
+            const auto* seq = midi.getTrack (0);
+            for (int i = 0; i < seq->getNumEvents(); ++i)
+                if (! seq->getEventPointer (i)->message.isTextMetaEvent())
+                    plain.addEvent (seq->getEventPointer (i)->message);
+            juce::MidiFile stripped;
+            stripped.setTicksPerQuarterNote (960);
+            stripped.addTrack (plain);
+            const auto file2 = juce::File::createTempFile (".mid");
+            {
+                juce::FileOutputStream out (file2);
+                stripped.writeTo (out);
+            }
+            r = chordsFromMidiFile (file2, sig);
+            EXPECT (r.ok && ! r.fromNames);
+            auto nameAt = [&r] (double t)
+            {
+                for (const auto& span : r.chords)
+                    if (t >= span.start && t < span.end)
+                        return chordName (span.chord, r.key);
+                return std::string ("-");
+            };
+            EXPECT (nameAt (1) == "Bbm" && nameAt (5) == "Eb/Bb" && nameAt (9) == "Ab" && nameAt (21) == "Eb7");
+            if (nameAt (25) != "Gbmaj7")
+                std::printf ("midi detect at 25: %s\n", nameAt (25).c_str());
+            file2.deleteFile();
+        }
+
+        // Not a MIDI file.
+        const auto junk = juce::File::createTempFile (".mid");
+        junk.replaceWithText ("hello");
+        EXPECT (! chordsFromMidiFile (junk, sig).ok);
+        junk.deleteFile();
+
+        // Into the database: the chords become "edited".
+        BoothCueAudioProcessor p;
+        r = chordsFromMidiFile (file, sig);
+        p.setImportedChords (r.chords, r.key);
+        EXPECT (p.areChordsEdited() && p.getSong().chords().size() == chords.size() && p.canUndoChords());
+        file.deleteFile();
+    }
+
     // Step 6: display / tap settings, the display window and the editor size
     // come back with the state.
     void settingsTests()
@@ -631,6 +730,7 @@ int main (int argc, char** argv)
         linkTests (fixtures);
         tapTests (fixtures);
         chordTests (fixtures);
+        chordMidiTests();
         settingsTests();
         editorSnapshot (fixtures);
     }

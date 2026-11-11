@@ -113,6 +113,7 @@ public:
     bool hasDetectedChords() const noexcept                             { return ! detectedChords.empty(); }
     juce::String getChordChart() const;                // the chords as a chart (export / editing)
     ChartImport setChordChart (const juce::String&);   // import / apply a chart: the chords become "edited"
+    void setImportedChords (std::vector<ChordSpan>, Key); // e.g. from a MIDI file: the chords become "edited"
     void useDetectedChords();
     bool canUndoChords() const noexcept                                 { return hasChordUndo; }
     void undoChords();

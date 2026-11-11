@@ -194,6 +194,17 @@ identity and CI. Namespace `boothcue`. The core (`AlsParser`, `Song`,
   - Lyrics tab: Load / Save / Apply / Revert; Save writes the timings as
     `@bar.beat.16th` before every tapped line, Load reads them back.
   - `als-check --chart <set.als>` prints a set's detected chords as a chart.
+  - Chords as MIDI (`Source/ChordMidi.*`): "Drag MIDI" in the Chords tab
+    drags a .mid into Live (drop at bar 1) to use as a chord track: per chord
+    a close voicing around middle C + the bass note in octave 2, the chord
+    name as a text event, tempo and time signature; clicking it saves the
+    .mid. Dropping a .mid on the plugin window imports its chords: by the
+    chord-name text events when it has them (BoothCue's own export comes
+    back exactly), otherwise detected from its notes. Other drops: .txt =
+    the open tab's text (chart / lyrics), .als = link that set.
+    `prompter-render --midi <set.als> <out.mid>` writes the same file.
+    Dragging out of a plugin window is a host / OS feature: to check in Live
+    on the Mac (it does nothing on Linux).
 - **Live's clip colours** — each part is drawn in its clip's colour from the
   set (Live's 70-colour palette, by the index the clip stores), so the
   display matches Live; parts without a clip colour fall back to the colour

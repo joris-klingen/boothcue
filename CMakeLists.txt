@@ -69,6 +69,7 @@ if(BOOTHCUE_BUILD_PLUGIN)
         Source/PrompterView.cpp
         Source/DisplayWindow.cpp
         Source/SetWatcher.cpp
+        Source/ChordMidi.cpp
     )
 
     target_include_directories(BoothCue PRIVATE Source)
@@ -100,6 +101,7 @@ if(BOOTHCUE_BUILD_PLUGIN)
     target_sources(prompter-render PRIVATE
         tools/PrompterRender.cpp
         Source/PrompterPainter.cpp
+        Source/ChordMidi.cpp
     )
     target_include_directories(prompter-render PRIVATE Source)
     target_compile_definitions(prompter-render PRIVATE
@@ -108,6 +110,7 @@ if(BOOTHCUE_BUILD_PLUGIN)
     )
     target_link_libraries(prompter-render PRIVATE
         boothcue-core
+        juce::juce_audio_basics
         juce::juce_gui_basics
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags

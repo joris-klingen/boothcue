@@ -1,6 +1,7 @@
 #include "PluginEditor.h"
 
 #include "ChordChart.h"
+#include "ChordMidi.h"
 #include "LyricImport.h"
 #include "Song.h"
 #include "Theme.h"
@@ -280,6 +281,11 @@ BoothCueAudioProcessorEditor::BoothCueAudioProcessorEditor (BoothCueAudioProcess
     chordSave.setTooltip ("Save the chart as a text file (import it with Load, or paste it)");
     for (auto* b : { &chordLoad, &chordSave, &chordApply, &chordRevert, &chordUndo, &chordDetected })
         addChildComponent (*b);
+    chordMidi.makeFile = [this] { return writeChordsMidiForDrag(); };
+    chordMidi.onClick = [this] { saveChordsMidi(); };
+    chordMidi.setTooltip ("Drag into Live (drop it at bar 1): a MIDI clip with these chords, to use as a chord track. "
+                          "Click to save the .mid instead.");
+    addChildComponent (chordMidi);
 
     saveLyricsButton.onClick = [this] { saveTextFile ("Save the lyrics (with their timings)", " - lyrics.txt",
                                                       processor.getTimedLyrics()); };
@@ -540,7 +546,7 @@ void BoothCueAudioProcessorEditor::showTab (bool chords)
                                                                         &clearButton, &clearAllButton })
         c->setVisible (! chords);
     for (juce::Component* c : std::initializer_list<juce::Component*> { &chordsEditor, &chordLoad, &chordSave, &chordApply,
-                                                                        &chordRevert, &chordUndo, &chordDetected })
+                                                                        &chordRevert, &chordUndo, &chordDetected, &chordMidi })
         c->setVisible (chords);
     resized();
     repaint();
@@ -619,6 +625,146 @@ void BoothCueAudioProcessorEditor::updateChordButtons()
     chordUndo.setEnabled (processor.canUndoChords());
     chordDetected.setEnabled (processor.areChordsEdited() && processor.hasDetectedChords());
     repaint (noteRow);
+}
+
+// ---- chords as MIDI, drops ---------------------------------------------------------------------
+
+juce::String BoothCueAudioProcessorEditor::songName() const
+{
+    const auto set = processor.getLinkStatus().file;
+    return set != juce::File() ? set.getFileNameWithoutExtension() : juce::String ("song");
+}
+
+juce::File BoothCueAudioProcessorEditor::writeChordsMidiForDrag()
+{
+    // A file named after the song: Live names the dropped clip after it.
+    const auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("BoothCue");
+    dir.createDirectory();
+    const auto file = dir.getChildFile (juce::File::createLegalFileName (songName() + " chords.mid"));
+    const auto t = processor.getTransport();
+    const auto& song = processor.getSong();
+    writeChordsMidi (file, song.chords(), song.key(), song.timeSig(), t.valid ? t.bpm : 120.0, songName() + " chords");
+    return file;
+}
+
+void BoothCueAudioProcessorEditor::saveChordsMidi()
+{
+    const auto set = processor.getLinkStatus().file;
+    const auto folder = set != juce::File() ? set.getParentDirectory()
+                                             : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory);
+    chooser = std::make_unique<juce::FileChooser> ("Save the chords as MIDI", folder.getChildFile (songName() + " chords.mid"), "*.mid");
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                              | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [this] (const juce::FileChooser& fc)
+                          {
+                              const auto file = fc.getResult();
+                              if (file == juce::File())
+                                  return;
+                              const auto t = processor.getTransport();
+                              const auto& song = processor.getSong();
+                              writeChordsMidi (file, song.chords(), song.key(), song.timeSig(), t.valid ? t.bpm : 120.0,
+                                               songName() + " chords");
+                          });
+}
+
+void BoothCueAudioProcessorEditor::importChordsMidi (const juce::File& file)
+{
+    const auto r = chordsFromMidiFile (file, processor.getSong().timeSig());
+    if (! r.ok)
+    {
+        chordNote = file.getFileName() + ": " + r.error;
+        chordWarning = true;
+    }
+    else
+    {
+        processor.setImportedChords (r.chords, r.key);
+        chordNote = file.getFileName() + ": " + juce::String (r.chords.size()) + " chords "
+                    + (r.fromNames ? "(by their names)" : "(detected from its notes)");
+        chordWarning = false;
+    }
+    showTab (true);
+    revertChords();
+}
+
+bool BoothCueAudioProcessorEditor::isInterestedInFileDrag (const juce::StringArray& files)
+{
+    for (const auto& f : files)
+        if (juce::File (f).hasFileExtension ("mid;midi;txt;text;md;als"))
+            return true;
+    return false;
+}
+
+void BoothCueAudioProcessorEditor::filesDropped (const juce::StringArray& files, int, int)
+{
+    dropHover = false;
+    repaint();
+    for (const auto& path : files)
+    {
+        const juce::File file (path);
+        if (file.hasFileExtension ("mid;midi"))
+            importChordsMidi (file);
+        else if (file.hasFileExtension ("als"))
+            processor.linkSet (file);
+        else if (file.hasFileExtension ("txt;text;md"))
+        {
+            if (showingChords)
+            {
+                chordsEditor.setText (file.loadFileAsString(), false);
+                applyChords();
+            }
+            else
+            {
+                lyricsEditor.setText (file.loadFileAsString(), false);
+                applyLyrics();
+            }
+        }
+        else
+            continue;
+        break;   // one file at a time
+    }
+}
+
+void BoothCueAudioProcessorEditor::paintOverChildren (juce::Graphics& g)
+{
+    if (! dropHover)
+        return;
+    g.setColour (theme::sectionNow.withAlpha (0.12f));
+    g.fillAll();
+    g.setColour (theme::sectionNow);
+    g.drawRect (getLocalBounds(), 3);
+}
+
+void BoothCueAudioProcessorEditor::MidiDragHandle::paint (juce::Graphics& g)
+{
+    auto r = getLocalBounds().toFloat().reduced (1.0f);
+    const bool over = isMouseOver (true);
+    g.setColour (theme::count.withAlpha (over ? 0.95f : 0.8f));
+    g.fillRoundedRectangle (r, 4.0f);
+    g.setColour (theme::background);
+    // A small "grip" of dots, then the label.
+    auto grip = r.removeFromLeft (18.0f).reduced (5.0f, 7.0f);
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 2; ++j)
+            g.fillEllipse (grip.getX() + j * 5.0f, grip.getY() + i * (grip.getHeight() / 2.5f), 2.5f, 2.5f);
+    g.setFont (juce::FontOptions (14.0f, juce::Font::bold));
+    g.drawText ("Drag MIDI", r, juce::Justification::centred, false);
+}
+
+void BoothCueAudioProcessorEditor::MidiDragHandle::mouseDrag (const juce::MouseEvent& e)
+{
+    if (dragging || e.getDistanceFromDragStart() < 5 || ! makeFile)
+        return;
+    dragging = true;
+    const auto file = makeFile();
+    juce::DragAndDropContainer::performExternalDragDropOfFiles ({ file.getFullPathName() }, false, this,
+                                                               [this] { dragging = false; });
+}
+
+void BoothCueAudioProcessorEditor::MidiDragHandle::mouseUp (const juce::MouseEvent& e)
+{
+    if (! dragging && e.getDistanceFromDragStart() < 5 && onClick)
+        onClick();
+    dragging = false;
 }
 
 // ---- lyrics -----------------------------------------------------------------------------------
@@ -762,6 +908,7 @@ void BoothCueAudioProcessorEditor::resized()
         {
             place (chordSave, 70);
             place (chordLoad, 70);
+            chordMidi.setBounds (row.removeFromRight (juce::jmin (110, juce::jmax (0, row.getWidth()))).reduced (0, 1));
         }
         else
         {
