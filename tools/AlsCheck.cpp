@@ -8,9 +8,12 @@
 //                                     (tools/alsmuse_crosscheck.py compares that with ALSmuse)
 
 #include "AlsParser.h"
+#include "LyricImport.h"
+#include "Song.h"
 #include "SetChords.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -266,9 +269,86 @@ int main (int argc, char** argv)
         return 0;
     }
 
+    if (argc >= 3 && std::strcmp (argv[1], "--chords") == 0)
+    {
+        // A real set: its MIDI tracks, what the detector made of them, and the
+        // chords bar by bar under the sections (for tuning).
+        const auto r = parseAlsFile (argv[2], "parts", true);
+        if (! r.ok)
+        {
+            std::fprintf (stderr, "error: %s\n", r.error.c_str());
+            return 1;
+        }
+        // Optional: a bar length in beats, and / or a lyrics file to link.
+        double bar = 4.0;
+        std::string lyricsPath;
+        for (int a = 3; a < argc; ++a)
+        {
+            if (std::atof (argv[a]) > 0.0)
+                bar = std::atof (argv[a]);
+            else
+                lyricsPath = argv[a];
+        }
+        const auto c = chordsFromSet (r, bar);
+        Song song;
+        std::vector<Section> sections;
+        for (const auto& sec : r.sections)
+            sections.push_back ({ sec.name, sec.start, sec.end });
+        song.setSections (sections);
+        if (! lyricsPath.empty())
+        {
+            std::ifstream f (lyricsPath, std::ios::binary);
+            std::stringstream text;
+            text << f.rdbuf();
+            song.setBlocks (parseLyrics (text.str()));
+        }
+        static const char* roleNames[] = { "auto", "chords", "bass", "melody", "ignore" };
+        std::printf ("MIDI tracks:\n");
+        for (std::size_t i = 0; i < r.midiTracks.size(); ++i)
+        {
+            const auto& t = r.midiTracks[i];
+            const auto role = i < c.result.roles.size() ? c.result.roles[i] : TrackRole::ignore;
+            std::printf ("  %2d %-24s %5zu notes%s%s  -> %s\n", t.index + 1, t.name.c_str(), t.notes.size(),
+                         t.muted ? " muted" : "", t.drums ? " drums" : "", roleNames[static_cast<int> (role)]);
+        }
+        std::printf ("key: %s, %zu chords\n", keyName (c.result.key).c_str(), c.result.spans.size());
+        std::size_t k = 0;
+        for (const auto& sec : r.sections)
+        {
+            std::printf ("\n[%s] %.0f-%.0f", sec.name.empty() ? "(no name)" : sec.name.c_str(), sec.start, sec.end);
+            if (! lyricsPath.empty())
+            {
+                const int si = static_cast<int> (&sec - &r.sections[0]);
+                const int b = song.blockForSection (si);
+                if (b < 0)
+                    std::printf ("   lyrics: -");
+                else
+                    std::printf ("   lyrics: [%s] \"%s\"...", song.blocks()[static_cast<std::size_t> (b)].header.c_str(),
+                                 song.blocks()[static_cast<std::size_t> (b)].lines.empty() ? ""
+                                     : song.blocks()[static_cast<std::size_t> (b)].lines[0].text.c_str());
+            }
+            std::printf ("\n ");
+            for (double t = std::floor (sec.start / bar) * bar; t < sec.end - 1e-6; t += bar)
+            {
+                std::string cell;
+                for (k = 0; k < c.result.spans.size(); ++k)
+                {
+                    const auto& sp = c.result.spans[k];
+                    if (sp.end > t + 1e-6 && sp.start < t + bar - 1e-6)
+                        cell += (cell.empty() ? "" : " ") + chordName (sp.chord, c.result.key)
+                                + (sp.confidence < 0.15 ? "?" : "");
+                }
+                std::printf ("| %-12s", cell.empty() ? "-" : cell.c_str());
+            }
+            std::printf ("|\n");
+        }
+        return 0;
+    }
+
     if (argc < 2)
     {
-        std::printf ("usage: als-check <fixtures-dir> | --dump <set.als> [track name]\n");
+        std::printf ("usage: als-check <fixtures-dir> | --dump <set.als> [track name]"
+                     " | --chords <set.als> [bar beats] [lyrics.txt]\n");
         return 2;
     }
 

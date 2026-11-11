@@ -131,6 +131,8 @@ namespace
         EXPECT (sectionKind ("Outro") == SectionKind::outro && sectionKind ("Slot") == SectionKind::outro);
         EXPECT (sectionKind ("Solo") == SectionKind::other && sectionKind ("") == SectionKind::other);
         EXPECT (sectionKind ("Couplet 1") == SectionKind::verse);
+        EXPECT (sectionKind ("intro v2") == SectionKind::intro && sectionKind ("verse b") == SectionKind::verse);
+        EXPECT (sectionKind ("Pre chorus 2") == SectionKind::prechorus && sectionKind ("Interlude") == SectionKind::other);
 
         EXPECT (nameKey (" Verse-1 ") == "verse1");
         EXPECT (nameKey ("PRE CHORUS") == nameKey ("Pre-Chorus"));

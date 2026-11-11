@@ -87,6 +87,8 @@ struct ChordSettings
     double changeCost = 0.35;    // cost of a chord change mid-bar...
     double halfBarChangeCost = 0.22;
     double barChangeCost = 0.12; // ...on a half bar, on a bar line
+    double sameRootChangeCost = 0.30;   // extra for a change that keeps the root (Bbm -> Bbsus4 -> Bbm):
+                                        // a line moving on top, not a new chord
     bool   explain = false;          // fill ChordResult::slices (for tuning)
 };
 

@@ -50,17 +50,16 @@ std::string nameKey (const std::string& s)
 
 SectionKind sectionKind (const std::string& name)
 {
+    // The first word decides, with anything after it ("intro v2", "verse b",
+    // "chorus 2") ignored. Pre-chorus is checked before chorus.
     const auto key = nameKey (name);
-    std::size_t stem = 0;
-    while (stem < key.size() && key[stem] >= 'a' && key[stem] <= 'z')
-        ++stem;
-    const auto word = key.substr (0, stem);
-    if (word == "intro")                                    return SectionKind::intro;
-    if (word == "verse")                                    return SectionKind::verse;
-    if (word == "prechorus")                                return SectionKind::prechorus;
-    if (word == "chorus" || word == "hook")                 return SectionKind::chorus;
-    if (word == "bridge")                                   return SectionKind::bridge;
-    if (word == "outro" || word == "slot" || word == "coda" || word == "ending" || word == "end")
+    auto starts = [&key] (const char* w) { return key.rfind (w, 0) == 0; };
+    if (starts ("intro"))                                     return SectionKind::intro;
+    if (starts ("prechorus"))                                 return SectionKind::prechorus;
+    if (starts ("verse"))                                     return SectionKind::verse;
+    if (starts ("chorus") || starts ("hook"))                 return SectionKind::chorus;
+    if (starts ("bridge"))                                    return SectionKind::bridge;
+    if (starts ("outro") || starts ("slot") || starts ("coda") || starts ("ending"))
         return SectionKind::outro;
     return SectionKind::other;
 }

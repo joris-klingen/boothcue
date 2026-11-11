@@ -547,20 +547,68 @@ namespace
         std::vector<std::vector<double>> best (n, std::vector<double> (states, 0.0));
         std::vector<std::vector<std::size_t>> from (n, std::vector<std::size_t> (states, 0));
         best[0] = emission[0];
+        // A change costs more mid-bar, and more again when it keeps the root (a
+        // variant of the same chord: a line moving on top, not a new chord).
+        // Per state: the best previous chord on another root, and on the same root.
         for (std::size_t k = 1; k < n; ++k)
         {
             const double cost = changeCost (slices[k].start, settings);
-            const auto argmax = static_cast<std::size_t> (std::max_element (best[k - 1].begin(), best[k - 1].end()) - best[k - 1].begin());
+            const auto& prev = best[k - 1];
+            const std::size_t perRoot = qs.size();
+
+            // Best and second-best previous state, by root group (12 roots + no chord).
+            std::vector<std::size_t> rootBest (13, noChord), rootSecond (13, noChord);
+            std::vector<double> rootBestScore (13, -1e18), rootSecondScore (13, -1e18);
             for (std::size_t st = 0; st < states; ++st)
             {
-                const double stay = best[k - 1][st];
-                const double move = best[k - 1][argmax] - cost;
-                // On a tie (only in silence, where every chord scores the
-                // same) change as late as possible: a chord lasts until the
-                // next one sounds.
-                const bool keep = stay > move + 1.0e-9 || argmax == st;
-                best[k][st] = (keep ? stay : move) + emission[k][st];
-                from[k][st] = keep ? st : argmax;
+                const std::size_t r = st == noChord ? 12 : st / perRoot;
+                if (prev[st] > rootBestScore[r])
+                {
+                    rootSecondScore[r] = rootBestScore[r]; rootSecond[r] = rootBest[r];
+                    rootBestScore[r] = prev[st];           rootBest[r] = st;
+                }
+                else if (prev[st] > rootSecondScore[r])
+                {
+                    rootSecondScore[r] = prev[st];         rootSecond[r] = st;
+                }
+            }
+            // The two best root groups overall.
+            std::size_t g1 = 0, g2 = 1;
+            if (rootBestScore[g2] > rootBestScore[g1]) std::swap (g1, g2);
+            for (std::size_t r = 2; r < 13; ++r)
+            {
+                if (rootBestScore[r] > rootBestScore[g1])      { g2 = g1; g1 = r; }
+                else if (rootBestScore[r] > rootBestScore[g2]) g2 = r;
+            }
+
+            for (std::size_t st = 0; st < states; ++st)
+            {
+                const std::size_t r = st == noChord ? 12 : st / perRoot;
+                double bestScore = prev[st];   // staying: free
+                std::size_t bestFrom = st;
+                // From another root.
+                const std::size_t other = g1 != r ? g1 : g2;
+                // (On a tie, only in silence where every chord scores the same,
+                // the change comes as late as possible: a chord lasts until the
+                // next one sounds. So a move wins ties here.)
+                if (const double v = rootBestScore[other] - cost; v > bestScore - 1.0e-9 && other != r)
+                {
+                    bestScore = v;
+                    bestFrom = rootBest[other];
+                }
+                // From the same root, another quality.
+                if (r < 12)
+                {
+                    const std::size_t same = rootBest[r] != st ? rootBest[r] : rootSecond[r];
+                    const double sameScore = rootBest[r] != st ? rootBestScore[r] : rootSecondScore[r];
+                    if (same != noChord && sameScore - cost - settings.sameRootChangeCost > bestScore + 1.0e-9)
+                    {
+                        bestScore = sameScore - cost - settings.sameRootChangeCost;
+                        bestFrom = same;
+                    }
+                }
+                best[k][st] = bestScore + emission[k][st];
+                from[k][st] = bestFrom;
             }
         }
 

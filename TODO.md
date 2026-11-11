@@ -160,9 +160,19 @@ identity and CI. Namespace `boothcue`. The core (`AlsParser`, `Song`,
 6. ~~State~~ — done, see "Done" above.
 7. **Docs and release** — `README.md`, `CLAUDE.md`, `STATUS.md`,
    `installer/install.command` (VST3 + Standalone).
-8. **Real-set check** — run `als-check --dump` and
-   `tools/alsmuse_crosscheck.py` on a real set of Joris's and commit a small
-   real `.als` as a fixture.
+8. **Real-set check** — started with "papa is even weg 3.3" (10 MB, read +
+   chords in 0.5 s): sections identical to ALSmuse; choruses detected as
+   Bbm | Bbm | Ab | Ab | Eb7 | Eb7 | Bbm | Bbm (key Bb minor). It showed: too
+   much flicker between same-root variants (fixed: a same-root change costs
+   extra), part names like "intro v2" (fixed), unnamed chorus clips (name
+   them in Live), five clips all named "verse" of two lengths (lyrics link by
+   count; naming decides), and two bass tracks that disagree ("modo bass 2"
+   plays E under B-flat minor in verses 2 and 3: intended or not? -> a
+   per-track choice of chord / bass sources in the editor, chord step 2).
+   Tools: `als-check --chords <set.als> [bar beats] [lyrics.txt]` (tracks,
+   roles, chords per bar under the sections, lyric linking) and
+   `prompter-render --set <set.als> [lyrics.txt] <out.png> [beat ...]` (the
+   real display at iPad size). The set itself is not committed (private, 10 MB).
 
 ### Display toggles
 

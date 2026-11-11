@@ -4,13 +4,16 @@
 // scene can't be rendered or the PNG can't be written.
 //
 //   prompter-render [out.png] [single-scene.png]
+//   prompter-render --set <set.als> [lyrics.txt] <out.png> [beat ...]
 //       (default: previews/prompter-sheet.png; the second file, if given, gets
 //        the first iPad-sized scene at its own size)
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "AlsParser.h"
 #include "Chords.h"
 #include "LyricImport.h"
+#include "SetChords.h"
 #include "PrompterPainter.h"
 #include "Theme.h"
 
@@ -177,9 +180,85 @@ namespace
     }
 }
 
+// --set <set.als> [lyrics.txt] <out.png> [beat ...]: a real Live set (its
+// sections, the chords detected from its MIDI, the lyrics) at a few song
+// positions, at iPad 10.9" size, as a 2-column sheet.
+int renderSet (int argc, char* argv[])
+{
+    std::vector<std::string> args (argv + 2, argv + argc);
+    if (args.size() < 2)
+        return 2;
+    const auto set = parseAlsFile (args[0], "parts", true);
+    if (! set.ok)
+    {
+        std::printf ("prompter-render: %s\n", set.error.c_str());
+        return 1;
+    }
+    std::size_t next = 1;
+    std::string lyrics;
+    if (args[1].size() > 4 && args[1].substr (args[1].size() - 4) == ".txt")
+    {
+        lyrics = juce::File (juce::String::fromUTF8 (args[1].c_str())).loadFileAsString().toStdString();
+        ++next;
+    }
+    const auto out = juce::File::getCurrentWorkingDirectory().getChildFile (juce::String::fromUTF8 (args[next].c_str()));
+    std::vector<double> beats;
+    for (auto i = next + 1; i < args.size(); ++i)
+        beats.push_back (std::atof (args[i].c_str()));
+
+    Song song;
+    std::vector<Section> sections;
+    for (const auto& sec : set.sections)
+        sections.push_back ({ sec.name, sec.start, sec.end });
+    song.setSections (sections);
+    song.setBarLength (4.0);
+    song.setBlocks (parseLyrics (lyrics));
+    const auto chords = chordsFromSet (set, 4.0);
+    song.setChords (chords.result.spans, chords.result.key);
+    if (beats.empty())   // a bar into each of the first sections
+        for (std::size_t i = 0; i < song.sections().size() && beats.size() < 6; ++i)
+            beats.push_back (song.sections()[i].start + 6.0);
+
+    constexpr int w = 1180, h = 820, tileW = 944, tileH = 656, pad = 16, label = 34;
+    const int rows = (static_cast<int> (beats.size()) + 1) / 2;
+    juce::Image sheet (juce::Image::RGB, pad + 2 * (tileW + pad), pad + rows * (label + tileH + pad), true);
+    juce::Graphics g (sheet);
+    g.fillAll (juce::Colour (0xff1e2228));
+    for (std::size_t i = 0; i < beats.size(); ++i)
+    {
+        TransportState t;
+        t.valid = t.playing = true;
+        t.ppq = beats[i];
+        t.bpm = 120.0;
+        DisplaySettings settings;
+        juce::Image image (juce::Image::RGB, w, h, true);
+        {
+            juce::Graphics ig (image);
+            PrompterPainter painter;
+            painter.paint (ig, { 0, 0, w, h }, buildScene (song, t, settings), song, settings);
+        }
+        const int x = pad + static_cast<int> (i % 2) * (tileW + pad), y = pad + static_cast<int> (i / 2) * (label + tileH + pad);
+        g.setColour (juce::Colours::white);
+        g.setFont (juce::FontOptions (20.0f, juce::Font::bold));
+        g.drawText ("beat " + juce::String (beats[i], 0), x, y, tileW, label - 6, juce::Justification::bottomLeft);
+        g.drawImageWithin (image, x, y + label, tileW, tileH, juce::RectanglePlacement::centred);
+    }
+    out.deleteFile();
+    juce::FileOutputStream stream (out);
+    juce::PNGImageFormat png;
+    if (! stream.openedOk() || ! png.writeImageToStream (sheet, stream))
+        return 1;
+    std::printf ("prompter-render: wrote %s (%zu positions, key %s, %zu chords)\n", out.getFullPathName().toRawUTF8(),
+                 beats.size(), keyName (chords.result.key).c_str(), chords.result.spans.size());
+    return 0;
+}
+
 int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI gui;
+
+    if (argc > 1 && std::string (argv[1]) == "--set")
+        return renderSet (argc, argv);
 
     const auto outFile = juce::File::getCurrentWorkingDirectory().getChildFile (
         argc > 1 ? argv[1] : "previews/prompter-sheet.png");
