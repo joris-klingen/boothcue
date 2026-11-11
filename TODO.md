@@ -133,7 +133,7 @@ under "Done".
 - **Display, three zoom levels** (after trying it on a 10" iPad): the whole
   song (overview with the locator), a ticker of ~16 bars around the playhead
   (a quarter behind, the rest ahead) with the chords at their changes, the
-  current one highlighted, bass notes under them, bar lines and numbers,
+  current one highlighted in yellow, bass notes under them, faint bar lines,
   marks where lyric lines start and the host loop, and now (the lyrics; with
   lyrics off: the chords now / next, big). Song parts are colour-coded in the
   overview and as the ticker's backgrounds: intro yellow, verse blue, chorus

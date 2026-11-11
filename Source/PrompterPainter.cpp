@@ -552,18 +552,12 @@ void PrompterPainter::paintTicker (juce::Graphics& g, juce::Rectangle<float> are
         }
     }
 
-    // Bar lines (stronger every 4 bars) with the bar number.
+    // Bar lines, faint (a little less faint every 4 bars).
     for (double b = std::ceil (left / bar - 1.0e-9) * bar; b < right; b += bar)
     {
-        const int number = static_cast<int> (std::floor (b / bar + 0.5)) + 1;
-        const bool four = (number - 1) % 4 == 0;
-        g.setColour (theme::text.withAlpha (four ? 0.30f : 0.14f));
+        const int number = static_cast<int> (std::floor (b / bar + 0.5));
+        g.setColour (theme::text.withAlpha (number % 4 == 0 ? 0.16f : 0.07f));
         g.fillRect (juce::Rectangle<float> (x (b), body.getY() + nameH, juce::jmax (1.0f, 0.12f * unit), body.getHeight() - nameH));
-        g.setColour (theme::text.withAlpha (0.35f));
-        g.setFont (font (1.7f * unit * (big ? 1.3f : 1.0f)));
-        g.drawText (juce::String (number), juce::Rectangle<float> (x (b) + 0.3f * unit, area.getBottom() - 2.2f * unit * (big ? 1.3f : 1.0f),
-                                                                   4.0f * unit, 2.0f * unit * (big ? 1.3f : 1.0f)),
-                    juce::Justification::centredLeft, false);
     }
 
     // Where lyric lines start: small marks along the bottom.
@@ -581,7 +575,7 @@ void PrompterPainter::paintTicker (juce::Graphics& g, juce::Rectangle<float> are
     // The chords, at their changes.
     if (settings.showChords && s.hasChords)
     {
-        auto row = body.withTrimmedTop (nameH).withTrimmedBottom (2.4f * unit * (big ? 1.3f : 1.0f));
+        auto row = body.withTrimmedTop (nameH).withTrimmedBottom (1.2f * unit * (big ? 1.3f : 1.0f));
         const float bassH = settings.showBassNote ? row.getHeight() * 0.32f : 0.0f;
         const auto key = song.key();
         const auto& chords = song.chords();
@@ -597,18 +591,12 @@ void PrompterPainter::paintTicker (juce::Graphics& g, juce::Rectangle<float> are
             const float x1 = x (std::min (c.end, right));
             if (c.start >= left)
             {
-                g.setColour (theme::text.withAlpha (past ? 0.25f : 0.6f));
+                g.setColour (theme::text.withAlpha (past ? 0.12f : 0.3f));
                 g.fillRect (juce::Rectangle<float> (x (c.start), row.getY(), juce::jmax (1.5f, 0.2f * unit), row.getHeight()));
             }
             auto cell = juce::Rectangle<float> (x0 + 0.6f * unit, row.getY(), x1 - x0 - 1.0f * unit, row.getHeight());
             if (cell.getWidth() < 2.0f * unit)
                 continue;
-            if (now)
-            {
-                g.setColour (theme::background.withAlpha (0.55f));
-                g.fillRoundedRectangle (cell.reduced (0.0f, 0.2f * unit), 0.5f * unit);
-            }
-
             auto chord = c.chord;
             if (settings.showBassNote)
                 chord.bass = chord.root;
