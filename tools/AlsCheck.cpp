@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -133,6 +134,30 @@ namespace
         EXPECT (parseAlsFile (dir + "/truncated.als").sections.empty());
         EXPECT (! parseAlsFile (dir + "/not-a-set.als").ok);
         EXPECT (! parseAlsFile (dir + "/does-not-exist.als").ok);
+
+        // A save caught at ANY byte: a failure, or the whole structure, never
+        // the 2nd track standing in for a parts track that was still to come
+        // (parts-moved.als has it 3rd), nor a set with some of its tracks.
+        for (const char* name : { "/parts-moved.als", "/notes.als" })
+        {
+            std::ifstream in (dir + name, std::ios::binary);
+            std::stringstream buffer;
+            buffer << in.rdbuf();
+            const auto whole = buffer.str();
+            const auto full = parseAlsFile (dir + name, "parts", true);
+            const auto cut = (std::filesystem::temp_directory_path() / "boothcue-als-check-cut.als").string();
+            int wrong = 0;
+            for (std::size_t n = 1; n < whole.size(); ++n)
+            {
+                std::ofstream (cut, std::ios::binary).write (whole.data(), static_cast<std::streamsize> (n));
+                const auto r = parseAlsFile (cut);
+                const auto withNotes = parseAlsFile (cut, "parts", true);
+                wrong += r.ok && (r.usedFallback || r.sections.size() != full.sections.size()) ? 1 : 0;
+                wrong += withNotes.ok && (withNotes.usedFallback || withNotes.midiTracks.size() != full.midiTracks.size()) ? 1 : 0;
+            }
+            std::remove (cut.c_str());
+            EXPECT (full.ok && whole.size() > 500 && wrong == 0);
+        }
     }
 
     bool hasNote (const AlsMidiTrack& t, double start, int pitch, double length = -1.0)
@@ -252,6 +277,54 @@ namespace
 
         EXPECT (! parseAlsXml ("<Ableton><LiveSet><Tracks><MidiTrack =></Tracks>").ok);
         EXPECT (! parseAlsXml ("").ok);
+
+        // A track list that is cut off (a save caught halfway, a damaged file)
+        // is a failure, never the 2nd track standing in for a parts track that
+        // was still to come, nor half the tracks for chord detection.
+        const std::string twoTracks = "<Ableton><LiveSet><Tracks><MidiTrack><Name><UserName Value='x'/></Name></MidiTrack>"
+                                      "<MidiTrack><Name><UserName Value='y'/></Name></MidiTrack>";
+        const std::string partsTrack = "<MidiTrack><Name><UserName Value='parts'/></Name></MidiTrack>";
+        r = parseAlsXml (twoTracks + "<MidiTrack><Name><UserName Value='parts'/></Name>");
+        EXPECT (! r.ok && ! r.error.empty() && r.sections.empty());
+        EXPECT (parseAlsXml (twoTracks + "</Tracks>").ok);                 // complete: the fallback
+        EXPECT (parseAlsXml (twoTracks + partsTrack).ok);                  // the parts track is all that's needed...
+        r = parseAlsXml (twoTracks + partsTrack + "<MidiTrack>", "parts", true);
+        EXPECT (! r.ok && r.midiTracks.empty());                           // ...but not when the notes are wanted
+        EXPECT (parseAlsXml (twoTracks + partsTrack + "</Tracks>", "parts", true).midiTracks.size() == 3);
+
+        // Numbers no set has: skipped, not carried along as inf or wrapped ints.
+        r = parse ("<MidiClip Time=\"0\"><CurrentEnd Value=\"1e99999999999\"/></MidiClip>"
+                   "<MidiClip Time=\"0\"><CurrentEnd Value=\"1e300\"/></MidiClip>"
+                   "<MidiClip Time=\"-1e300\"><CurrentEnd Value=\"4\"/></MidiClip>"
+                   "<MidiClip Time=\"4\"><CurrentEnd Value=\"8\"/><Color Value=\"1e300\"/></MidiClip>");
+        EXPECT (r.ok && r.sections.size() == 1);
+        EXPECT (r.sections.size() == 1 && r.sections[0].start == 4.0 && r.sections[0].color == -1);
+
+        // Character references that are no character stay as written.
+        r = parse ("<MidiClip Time=\"0\"><CurrentEnd Value=\"4\"/><Name Value=\"a&#0;b&#x110000;c&#xD800;d&#xZ;e&#65;\"/></MidiClip>");
+        EXPECT (r.sections.size() == 1 && r.sections[0].name == "a&#0;b&#x110000;c&#xD800;d&#xZ;eA");
+
+        // Notes: a key or velocity out of MIDI's range, and a loop of next to
+        // nothing under a long clip (unrolled, it would be millions of notes).
+        auto notes = [&] (const std::string& loop, const std::string& keyTracks)
+        {
+            const auto set = parseAlsXml (head + ("<MidiClip Time=\"0\"><CurrentEnd Value=\"100000\"/><Loop>" + loop
+                                                  + "</Loop><Notes><KeyTracks>" + keyTracks + "</KeyTracks></Notes></MidiClip>")
+                                              + tail, "parts", true);
+            return set.ok && set.midiTracks.size() == 2 ? set.midiTracks[1].notes : std::vector<AlsNote>();
+        };
+        const std::string event = "<Notes><MidiNoteEvent Time=\"0\" Duration=\"1\" Velocity=\"1e300\"/></Notes>";
+        auto n = notes ("<LoopStart Value=\"0\"/><LoopEnd Value=\"4\"/>",
+                        "<KeyTrack>" + event + "<MidiKey Value=\"60\"/></KeyTrack>"
+                        "<KeyTrack>" + event + "<MidiKey Value=\"1e300\"/></KeyTrack>"
+                        "<KeyTrack>" + event + "<MidiKey Value=\"128\"/></KeyTrack>");
+        EXPECT (n.size() == 1 && n[0].pitch == 60 && n[0].velocity == 127);
+        n = notes ("<LoopStart Value=\"0\"/><LoopEnd Value=\"0.0001\"/><LoopOn Value=\"true\"/>",
+                   "<KeyTrack><Notes>" + [] { std::string twenty; for (int i = 0; i < 20; ++i)
+                                                  twenty += "<MidiNoteEvent Time=\"0\" Duration=\"1\" Velocity=\"100\"/>";
+                                              return twenty; }()
+                   + "</Notes><MidiKey Value=\"60\"/></KeyTrack>");
+        EXPECT (! n.empty() && n.size() <= 1000000);
     }
 }
 

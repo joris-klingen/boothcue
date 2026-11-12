@@ -42,15 +42,36 @@ namespace
             int esign = 1, e = 0;
             if (*p == '-') { esign = -1; ++p; }
             else if (*p == '+') ++p;
-            for (; *p >= '0' && *p <= '9'; ++p) e = e * 10 + (*p - '0');
+            for (; *p >= '0' && *p <= '9'; ++p)
+                if (e < 10000)   // far past what a double holds; more digits can't overflow the int
+                    e = e * 10 + (*p - '0');
             v *= std::pow (10.0, esign * e);
         }
         while (isSpace (*p)) ++p;
-        if (*p != '\0')
+        if (*p != '\0' || ! std::isfinite (v))
             return false;
         out = sign * v;
         return true;
     }
+
+    // A time in beats. A damaged file can hold any number; one this far out
+    // (half a day of music at 120 bpm) would have everything that walks the
+    // song bar by bar or beat by beat run (or allocate) without end, so it
+    // counts as unusable.
+    constexpr double kMaxBeats = 1.0e5;
+
+    bool parseBeats (const std::string& s, double& out)
+    {
+        double v = 0.0;
+        if (! parseDouble (s, v) || std::abs (v) > kMaxBeats)
+            return false;
+        out = v;
+        return true;
+    }
+
+    // The most notes one track is given: a loop of next to nothing under a
+    // long clip (again: a damaged file) would otherwise unroll without bound.
+    constexpr std::size_t kMaxTrackNotes = 1000000;
 
     std::string lowerTrimmed (const std::string& s)
     {
@@ -96,8 +117,15 @@ namespace
             else if (ent == "apos") out += '\'';
             else if (ent.size() > 1 && ent[0] == '#')
             {
+                // Not a character (0, a surrogate, past U+10FFFF, no number
+                // at all): left as written rather than turned into bad UTF-8.
                 const bool hex = ent[1] == 'x' || ent[1] == 'X';
-                appendUtf8 (out, std::strtoul (ent.c_str() + (hex ? 2 : 1), nullptr, hex ? 16 : 10));
+                const char* digits = ent.c_str() + (hex ? 2 : 1);
+                char* stop = nullptr;
+                const auto cp = std::strtoul (digits, &stop, hex ? 16 : 10);
+                if (stop == digits || *stop != '\0' || cp == 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF))
+                    { out += *p; continue; }
+                appendUtf8 (out, cp);
             }
             else { out += *p; continue; }
             p = semi;
@@ -146,11 +174,11 @@ namespace
             else if (rel == kClip)
             {
                 clip = AlsSection();
-                clipHasStart = parseDouble (attribute (attrs, "Time"), clip.start);
+                clipHasStart = parseBeats (attribute (attrs, "Time"), clip.start);
                 clipHasEnd = false;
                 content = Content();
             }
-            else if (rel == kClipEnd)   clipHasEnd = parseDouble (attribute (attrs, "Value"), clip.end);
+            else if (rel == kClipEnd)   clipHasEnd = parseBeats (attribute (attrs, "Value"), clip.end);
             else if (rel == kClipName)  clip.name = attribute (attrs, "Value");
             else if (rel == kClipColor)
             {
@@ -174,9 +202,9 @@ namespace
 
             const auto sub = rel.substr (std::min (rel.size(), kClip.size()));
             double v = 0.0;
-            if (sub == "/Loop/LoopStart" && parseDouble (attribute (attrs, "Value"), v))           content.loopStart = v;
-            else if (sub == "/Loop/LoopEnd" && parseDouble (attribute (attrs, "Value"), v))        content.loopEnd = v;
-            else if (sub == "/Loop/StartRelative" && parseDouble (attribute (attrs, "Value"), v))  content.startRelative = v;
+            if (sub == "/Loop/LoopStart" && parseBeats (attribute (attrs, "Value"), v))           content.loopStart = v;
+            else if (sub == "/Loop/LoopEnd" && parseBeats (attribute (attrs, "Value"), v))        content.loopEnd = v;
+            else if (sub == "/Loop/StartRelative" && parseBeats (attribute (attrs, "Value"), v))  content.startRelative = v;
             else if (sub == "/Loop/LoopOn")     content.loopOn = lowerTrimmed (attribute (attrs, "Value")) == "true";
             else if (sub == "/Disabled")        content.disabled = lowerTrimmed (attribute (attrs, "Value")) == "true";
             else if (sub == "/Notes/KeyTracks/KeyTrack")
@@ -186,7 +214,7 @@ namespace
             }
             else if (sub == "/Notes/KeyTracks/KeyTrack/MidiKey")
             {
-                if (parseDouble (attribute (attrs, "Value"), v))
+                if (parseDouble (attribute (attrs, "Value"), v) && v >= 0.0 && v < 128.0)
                     key = static_cast<int> (v);
             }
             else if (sub == "/Notes/KeyTracks/KeyTrack/Notes/MidiNoteEvent")
@@ -195,10 +223,10 @@ namespace
                     return;
                 AlsNote n;
                 double vel = 100.0;
-                if (! parseDouble (attribute (attrs, "Time"), n.start) || ! parseDouble (attribute (attrs, "Duration"), n.length))
+                if (! parseBeats (attribute (attrs, "Time"), n.start) || ! parseBeats (attribute (attrs, "Duration"), n.length))
                     return;
                 if (parseDouble (attribute (attrs, "Velocity"), vel))
-                    n.velocity = static_cast<int> (vel + 0.5);
+                    n.velocity = static_cast<int> (std::min (std::max (vel, 0.0), 127.0) + 0.5);
                 keyNotes.push_back (n);
             }
         }
@@ -236,7 +264,7 @@ namespace
                     if (out.start >= clipEnd - 1.0e-9)
                         continue;
                     out.length = std::min (n.length, stop - out.start);
-                    if (out.length > 1.0e-9)
+                    if (out.length > 1.0e-9 && track.notes.size() < kMaxTrackNotes)
                         track.notes.push_back (out);
                 }
             };
@@ -248,7 +276,7 @@ namespace
             }
             // Looped: from the start marker to the loop end, then the loop again.
             double at = clipStart, from = markerStart;
-            for (int pass = 0; at < clipEnd - 1.0e-9 && pass < 100000; ++pass)
+            for (int pass = 0; at < clipEnd - 1.0e-9 && pass < 100000 && track.notes.size() < kMaxTrackNotes; ++pass)
             {
                 if (from >= content.loopEnd - 1.0e-9)
                     from = content.loopStart;
@@ -299,10 +327,14 @@ namespace
             if (haveNamed)           chosen = &named;
             else if (haveSecond)     { chosen = &second; r.usedFallback = true; }
 
-            if (chosen == nullptr)
+            // The input ended inside the track list (`finished`: the list was
+            // read to its end, or as far as needed). What was seen until then
+            // is not the set: the parts track may still have been to come (the
+            // 2nd track is no stand-in for it then), and so may the notes.
+            if (chosen == nullptr || ! finished)
             {
                 if (! isAbleton)        r.error = "Not an Ableton Live set";
-                else if (! sawTracks)   r.error = "The set is incomplete (no track list found)";
+                else if (! sawTracks)   r.error = "The set is incomplete (the track list is missing or cut off)";
                 else                    r.error = "No MIDI track named \"" + wanted + "\" and no 2nd track to fall back on";
                 return r;
             }
