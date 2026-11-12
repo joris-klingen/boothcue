@@ -1029,6 +1029,44 @@ namespace
         // Comments are skipped, markdown headings still are headers.
         const auto b = parseLyrics ("# BoothCue lyrics\n## Chorus\nla\n");
         EXPECT (b.size() == 1 && b[0].header == "Chorus" && b[0].lines.size() == 1);
+
+        // A number too long to be a position is no position: the line stays text.
+        const auto huge = parseLyrics ("[Chorus]\n@99999999999999999999 la\n@1.99999999999.1 la\n@12.3.4 la\n");
+        EXPECT (huge.size() == 1 && huge[0].lines.size() == 3);
+        if (huge.size() == 1 && huge[0].lines.size() == 3)
+        {
+            EXPECT (! huge[0].lines[0].hasAt && huge[0].lines[0].text == "@99999999999999999999 la");
+            EXPECT (! huge[0].lines[1].hasAt);
+            EXPECT (huge[0].lines[2].hasAt && huge[0].lines[2].atBar == 12 && huge[0].lines[2].text == "la");
+        }
+    }
+
+    // A file that isn't lyrics dropped on the editor: one endless line. It is
+    // cut, the import comes back (std::regex runs out of stack on such a line).
+    void longLineTests()
+    {
+        std::string words, solid (300000, 'a'), bars = "|";
+        for (int i = 0; i < 60000; ++i) words += "word ";
+        for (int i = 0; i < 4; ++i) bars += " " + solid + " |";
+        for (const auto& line : { words, solid, "[" + solid + "]", "(" + solid + ")", "Chorus: " + words, bars, "@1.1.1 " + words + " x2" })
+        {
+            const auto b = parseLyrics ("[Verse]\nbefore\n" + line + "\nafter\n");
+            EXPECT (! b.empty());
+            for (const auto& block : b)
+            {
+                EXPECT (block.header.size() <= 1000);
+                for (const auto& l : block.lines)
+                    EXPECT (l.text.size() <= 1000);
+            }
+            EXPECT (! b.empty() && ! b.back().lines.empty() && b.back().lines.back().text == "after");
+        }
+        // Cut between characters, not inside one.
+        std::string accents;
+        for (int i = 0; i < 2000; ++i) accents += "\xC3\xA9";
+        const auto b = parseLyrics ("[Verse]\nx" + accents + "\n");
+        EXPECT (b.size() == 1 && b[0].lines.size() == 1);
+        if (b.size() == 1 && b[0].lines.size() == 1)
+            EXPECT (b[0].lines[0].text.size() == 999 && b[0].lines[0].text.back() == '\xA9');
     }
 }
 
@@ -1050,6 +1088,7 @@ int main (int argc, char** argv)
     chordSceneTests();
     chartTests();
     timedLyricsTests();
+    longLineTests();
     if (argc > 1)
         lyricFixtureTests (argv[1]);
     else

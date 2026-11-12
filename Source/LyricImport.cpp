@@ -234,6 +234,19 @@ std::vector<LyricBlock> parseLyrics (const std::string& input, LyricImportReport
         auto line = collapseSpaces (normaliseSpaces (input.substr (pos, eol - pos)));
         pos = eol + 1;
 
+        // No lyric line is this long. A file that isn't lyrics (one endless
+        // line) is cut here, between two characters: the patterns below are
+        // std::regex, which recurses per character and runs out of stack on
+        // a line of a few hundred thousand.
+        constexpr std::size_t kMaxLine = 1000;
+        if (line.size() > kMaxLine)
+        {
+            auto cut = kMaxLine;
+            while (cut > 0 && (static_cast<unsigned char> (line[cut]) & 0xC0) == 0x80)
+                --cut;
+            line = collapseSpaces (line.substr (0, cut));
+        }
+
         // Empty "()" placeholders in a line are notes to self, not lyrics.
         for (std::size_t i; (i = line.find ("()")) != std::string::npos;)
             line.erase (i, 2);
@@ -403,7 +416,9 @@ std::vector<LyricBlock> parseLyrics (const std::string& input, LyricImportReport
             // "@13.2.3 text": a start as a song position.
             LyricLine line;
             {
-                static const std::regex at (R"(^@(\d+)(?:\.(\d+))?(?:\.(\d+))?\s+(.*)$)");
+                // At most 6 / 3 digits: a longer number is no position (and
+                // would not fit an int), the line stays text.
+                static const std::regex at (R"(^@(\d{1,6})(?:\.(\d{1,3}))?(?:\.(\d{1,3}))?\s+(.*)$)");
                 std::smatch m;
                 if (std::regex_match (text, m, at))
                 {
