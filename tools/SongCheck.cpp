@@ -9,11 +9,13 @@
 #include "Song.h"
 #include "Transport.h"
 
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <thread>
 
 using namespace boothcue;
 
@@ -464,6 +466,40 @@ namespace
         EXPECT (r.valid && r.playing && r.looping && r.hasLastBarStart && ! r.recording);
         EXPECT (near (r.ppq, 33.25) && near (r.bpm, 96.5) && r.sigNum == 6 && r.sigDen == 8);
         EXPECT (near (r.loopStart, 16) && near (r.loopEnd, 48) && near (r.lastBarStart, 33) && r.loopPass == 3);
+
+        // One thread writing (as the audio thread does), one reading: a
+        // snapshot is always one block's, never fields of two.
+        SharedTransport busy;
+        std::atomic<bool> stop { false };
+        std::thread writer ([&busy, &stop]
+        {
+            TransportState w;
+            w.valid = true;
+            for (int i = 1; ! stop.load(); ++i)
+            {
+                w.ppq = i; w.bpm = i + 1; w.loopStart = i + 2; w.loopEnd = i + 3; w.lastBarStart = i + 4;
+                w.capturedMs = i + 5; w.sigNum = i; w.sigDen = i + 1; w.loopPass = i + 2;
+                w.playing = w.looping = (i & 1) != 0;
+                w.recording = w.hasLastBarStart = (i & 1) == 0;
+                busy.write (w);   // without a pause: far more often than any audio thread
+            }
+        });
+        int torn = 0;
+        for (int n = 0; n < 2000000; ++n)
+        {
+            const auto s = busy.read();
+            if (! s.valid)
+                continue;   // nothing written yet
+            const int i = s.sigNum;
+            const bool odd = (i & 1) != 0;
+            const bool whole = s.ppq == i && s.bpm == i + 1 && s.loopStart == i + 2 && s.loopEnd == i + 3
+                               && s.lastBarStart == i + 4 && s.capturedMs == i + 5 && s.sigDen == i + 1 && s.loopPass == i + 2
+                               && s.playing == odd && s.looping == odd && s.recording == ! odd && s.hasLastBarStart == ! odd;
+            torn += whole ? 0 : 1;
+        }
+        stop = true;
+        writer.join();
+        EXPECT (torn == 0);
     }
     TransportState at (double ppq, bool playing = true)
     {

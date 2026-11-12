@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <thread>
 
 namespace boothcue
 {
@@ -90,55 +91,76 @@ private:
 // Lock-free hand-off of the TransportState from the audio thread (one writer)
 // to the message thread (readers): a sequence counter around atomic fields, so
 // a reader never sees half of one block and half of the next.
+//
+// Every load and store is sequentially consistent (the default order), on
+// purpose. With relaxed field stores nothing orders them after the counter
+// going odd, nor a reader's field loads before its second look at the
+// counter: on a weakly ordered CPU (ARM: Apple silicon) a reader could then
+// take fields from two blocks and still find the counter unchanged. In one
+// total order that can't happen: an unchanged, even counter means no write
+// started or ended between the two looks. The cost is a dozen atomic stores
+// per audio block.
 class SharedTransport
 {
 public:
     void write (const TransportState& s) noexcept   // audio thread
     {
-        seq.fetch_add (1, std::memory_order_acq_rel);   // odd: write in progress
+        seq.fetch_add (1);   // odd: write in progress
         flags.store ((s.valid ? 1u : 0u) | (s.playing ? 2u : 0u) | (s.recording ? 4u : 0u)
-                         | (s.looping ? 8u : 0u) | (s.hasLastBarStart ? 16u : 0u),
-                     std::memory_order_relaxed);
-        ppq.store (s.ppq, std::memory_order_relaxed);
-        bpm.store (s.bpm, std::memory_order_relaxed);
-        sigNum.store (s.sigNum, std::memory_order_relaxed);
-        sigDen.store (s.sigDen, std::memory_order_relaxed);
-        loopStart.store (s.loopStart, std::memory_order_relaxed);
-        loopEnd.store (s.loopEnd, std::memory_order_relaxed);
-        lastBarStart.store (s.lastBarStart, std::memory_order_relaxed);
-        loopPass.store (s.loopPass, std::memory_order_relaxed);
-        capturedMs.store (s.capturedMs, std::memory_order_relaxed);
-        seq.fetch_add (1, std::memory_order_acq_rel);
+                         | (s.looping ? 8u : 0u) | (s.hasLastBarStart ? 16u : 0u));
+        ppq.store (s.ppq);
+        bpm.store (s.bpm);
+        sigNum.store (s.sigNum);
+        sigDen.store (s.sigDen);
+        loopStart.store (s.loopStart);
+        loopEnd.store (s.loopEnd);
+        lastBarStart.store (s.lastBarStart);
+        loopPass.store (s.loopPass);
+        capturedMs.store (s.capturedMs);
+        seq.fetch_add (1);
     }
 
     TransportState read() const noexcept            // any other thread
     {
+        // A read that overlaps a write is taken again. When the audio thread
+        // is suspended in the middle of a write, that takes as long as the
+        // suspension: spinning on would run out of attempts and hand back
+        // fields of two blocks, so after a few tries the reader gives way
+        // instead (it is never the audio thread). The limit only guards
+        // against a writer that never comes back.
         TransportState s;
-        for (int attempt = 0; attempt < 1000; ++attempt)
+        for (int attempt = 0; attempt < 100000; ++attempt)
         {
-            const auto before = seq.load (std::memory_order_acquire);
-            const auto f = flags.load (std::memory_order_relaxed);
+            if (attempt >= 16)
+                std::this_thread::yield();
+            const auto before = seq.load();
+            const auto f = flags.load();
             s.valid           = (f & 1u) != 0;
             s.playing         = (f & 2u) != 0;
             s.recording       = (f & 4u) != 0;
             s.looping         = (f & 8u) != 0;
             s.hasLastBarStart = (f & 16u) != 0;
-            s.ppq          = ppq.load (std::memory_order_relaxed);
-            s.bpm          = bpm.load (std::memory_order_relaxed);
-            s.sigNum       = sigNum.load (std::memory_order_relaxed);
-            s.sigDen       = sigDen.load (std::memory_order_relaxed);
-            s.loopStart    = loopStart.load (std::memory_order_relaxed);
-            s.loopEnd      = loopEnd.load (std::memory_order_relaxed);
-            s.lastBarStart = lastBarStart.load (std::memory_order_relaxed);
-            s.loopPass     = loopPass.load (std::memory_order_relaxed);
-            s.capturedMs   = capturedMs.load (std::memory_order_relaxed);
-            if ((before & 1u) == 0 && seq.load (std::memory_order_acquire) == before)
+            s.ppq          = ppq.load();
+            s.bpm          = bpm.load();
+            s.sigNum       = sigNum.load();
+            s.sigDen       = sigDen.load();
+            s.loopStart    = loopStart.load();
+            s.loopEnd      = loopEnd.load();
+            s.lastBarStart = lastBarStart.load();
+            s.loopPass     = loopPass.load();
+            s.capturedMs   = capturedMs.load();
+            if ((before & 1u) == 0 && seq.load() == before)
                 break;
         }
         return s;
     }
 
 private:
+    // The audio thread must never take a lock: these have to be real atomics.
+    static_assert (std::atomic<double>::is_always_lock_free && std::atomic<std::uint32_t>::is_always_lock_free
+                       && std::atomic<int>::is_always_lock_free,
+                   "SharedTransport needs lock-free atomics");
+
     std::atomic<std::uint32_t> seq { 0 };
     std::atomic<std::uint32_t> flags { 0 };
     std::atomic<double> ppq { 0.0 }, bpm { 120.0 }, loopStart { 0.0 }, loopEnd { 0.0 }, lastBarStart { 0.0 };

@@ -155,7 +155,8 @@ target_link_libraries(als-check PRIVATE boothcue-core)
 # song-check: lyric import and linking, cue placement, count-in, bar/beat, loop
 # passes, tap / nudge, the transport hand-off. No JUCE, no clock.
 add_executable(song-check tools/SongCheck.cpp)
-target_link_libraries(song-check PRIVATE boothcue-core)
+find_package(Threads REQUIRED)   # the transport hand-off is checked across two threads
+target_link_libraries(song-check PRIVATE boothcue-core Threads::Threads)
 
 # chord-check: the chord detector on the Bovenburen chord charts played as
 # synthetic MIDI (arpeggios, passing / grace notes, suspensions, a melody on
