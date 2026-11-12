@@ -169,6 +169,45 @@ namespace
             EXPECT (q.getLinkStatus().file == set);
         }
 
+        // Asked for at any moment while the timer applies it: the state that
+        // was set, never the one from before (here: a state without a set).
+        for (int round = 0; round < 5; ++round)
+        {
+            BoothCueAudioProcessor q;
+            std::atomic<bool> stop { false };
+            std::atomic<int> stale { 0 };
+            std::thread t ([&]
+            {
+                q.setStateInformation (saved.getData(), static_cast<int> (saved.getSize()));
+                while (! stop.load())
+                {
+                    const auto m = stateOf (q);
+                    if (! juce::ValueTree::readFromData (m.getData(), m.getSize()).getChildWithName ("Set").isValid())
+                        ++stale;
+                }
+            });
+            for (int i = 0; i < 40 && q.getSong().sections().empty(); ++i)
+                pump (25);
+            pump (25);
+            stop = true;
+            t.join();
+            EXPECT (q.getSong().sections().size() == 8);
+            EXPECT (stale.load() == 0);
+        }
+
+        // A state set on the message thread right after one from another
+        // thread: the later one stays, the parked one doesn't come back over it.
+        {
+            BoothCueAudioProcessor fresh, q;
+            const auto none = stateOf (fresh);
+            std::thread t ([&] { q.setStateInformation (saved.getData(), static_cast<int> (saved.getSize())); });
+            t.join();
+            q.setStateInformation (none.getData(), static_cast<int> (none.getSize()));
+            pump (300);
+            EXPECT (q.getSong().sections().empty());
+            EXPECT (q.getLinkStatus().file == juce::File());
+        }
+
         // Lyrics and their taps travel with the state.
         {
             auto blocks = parseLyrics ("[Verse 1]\nfirst line\nsecond line\n[Chorus]\nhold on\n");

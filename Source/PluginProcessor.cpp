@@ -211,16 +211,26 @@ void BoothCueAudioProcessor::reloadSet()
 
 void BoothCueAudioProcessor::timerCallback()
 {
-    if (hasPendingState.exchange (false))
+    if (hasPendingState.load())
     {
         juce::ValueTree state;
         {
             const juce::ScopedLock sl (stateLock);
             state = pendingState;
-            pendingState = {};
         }
         if (state.isValid())
             applyState (state);
+
+        // It stays parked until it is applied and the snapshot is it: a
+        // getStateInformation in between still gets the state that was set,
+        // not the one from before. A newer one that came in meanwhile is left
+        // for the next tick.
+        const juce::ScopedLock sl (stateLock);
+        if (pendingState == state)
+        {
+            pendingState = {};
+            hasPendingState = false;
+        }
     }
 
     SetWatcher::Report report;
@@ -715,6 +725,12 @@ void BoothCueAudioProcessor::setStateInformation (const void* data, int sizeInBy
 
     if (juce::MessageManager::existsAndIsCurrentThread())
     {
+        {
+            // An older state still parked for the timer must not come back over this one.
+            const juce::ScopedLock sl (stateLock);
+            pendingState = {};
+            hasPendingState = false;
+        }
         applyState (state);
         return;
     }
