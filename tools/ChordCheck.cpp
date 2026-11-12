@@ -395,6 +395,19 @@ namespace
             std::printf ("silence test: got %s at 17.5\n", dm.c_str());
         EXPECT (dm == "Dm/A");   // A is its lowest note
         EXPECT (detectChords ({}, 16).spans.empty());
+
+        // Settings and a song end that make no sense (a grid of 0 beats, a
+        // damaged file's end): still the same chords, on a grid that ends.
+        ChordSettings odd;
+        odd.sliceBeats = 0.0;
+        odd.barBeats = 0.0;
+        EXPECT (chordName (chordAt (detectChords (in, 20, odd), 17.5), r.key) == "Dm/A");
+        odd.sliceBeats = -1.0;
+        EXPECT (chordName (chordAt (detectChords (in, 20, odd), 17.5), r.key) == "Dm/A");
+        const auto endless = detectChords (in, 1.0e15);
+        EXPECT (chordName (chordAt (endless, 9), r.key) == "Am");
+        EXPECT (! endless.spans.empty() && endless.spans.back().end <= 1.0e5 + 1e-9);
+        EXPECT (detectChords (in, std::nan ("")).spans.empty());
     }
 }
 

@@ -620,8 +620,17 @@ namespace
     }
 }
 
-ChordResult detectChords (const ChordInput& input, double songEnd, const ChordSettings& settings)
+ChordResult detectChords (const ChordInput& input, double songEnd, const ChordSettings& given)
 {
+    // A grid of nothing (or less) can't be walked, and a song end no song has
+    // (a damaged .als or .mid) would be a grid without end: every slice costs
+    // a few kB in the Viterbi tables.
+    constexpr double kMaxSlices = 100000.0;
+    ChordSettings settings = given;
+    if (! (settings.sliceBeats > 0.0))  settings.sliceBeats = 1.0;
+    if (! (settings.barBeats > 0.0))    settings.barBeats = 4.0;
+    songEnd = std::min (songEnd, kMaxSlices * settings.sliceBeats);
+
     // Notes below the floor (sound selectors / keyswitches) are left out before
     // anything else, so they can't change a track's role either.
     ChordInput in;
