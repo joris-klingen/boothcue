@@ -30,6 +30,19 @@ with non-trivial commits. The plan and open backlog are in [TODO.md](TODO.md).
 
 ## Changelog
 
+- **after v0.1.0** (review fixes):
+  - `.als` reader: a file that ends inside the track list is a failed read
+    (it used to come back as the 2nd track, or with tracks missing); numbers
+    no set has (inf, times past 1e5 beats, keys / velocities out of MIDI's
+    range) are skipped; at most a million notes per track;
+  - lyric import: `@` positions of too many digits and endless lines no
+    longer crash;
+  - chord detector: the grid always ends (slice length 0, a far-out song end);
+  - transport hand-off: a reader never returns fields of two blocks (it
+    waits for the writer; sequentially consistent atomics);
+  - state set off the message thread is handed back until applied, and
+    never applied over a newer one.
+
 - **v0.1.0** (first version, [PR #1](https://github.com/joris-klingen/boothcue/pull/1)):
   - core: `.als` parser, song model, lyric import (plain C++);
   - plugin scaffold, singer display, linking and watching the set, editor,
