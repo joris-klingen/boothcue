@@ -11,6 +11,13 @@ namespace
 {
     constexpr double kEps = 1.0e-6;
 
+    // A count for the display from a position the host gave. A host can hand
+    // over anything (NaN, 1e300); casting that to int is undefined.
+    int whole (double v)
+    {
+        return std::isfinite (v) ? static_cast<int> (std::clamp (v, -1.0e9, 1.0e9)) : 0;
+    }
+
     bool validLine (const std::vector<LyricBlock>& blocks, int block, int line)
     {
         return block >= 0 && block < static_cast<int> (blocks.size())
@@ -501,8 +508,8 @@ BarBeat barBeatAt (double ppq, TimeSig sig, bool hasLastBarStart, double lastBar
     const double barStart = hasLastBarStart ? lastBarStart : barIndex * barLen;
 
     BarBeat out;
-    out.bar  = static_cast<int> (hasLastBarStart ? std::floor ((lastBarStart + kEps) / barLen + 0.5) : barIndex) + 1;
-    out.beat = std::clamp (static_cast<int> (std::floor ((ppq - barStart + kEps) / beatLen)), 0, std::max (0, sig.num - 1)) + 1;
+    out.bar  = whole (hasLastBarStart ? std::floor ((lastBarStart + kEps) / barLen + 0.5) : barIndex) + 1;
+    out.beat = std::clamp (whole (std::floor ((ppq - barStart + kEps) / beatLen)), 0, std::max (0, sig.num - 1)) + 1;
     return out;
 }
 
@@ -513,7 +520,7 @@ std::string formatPosition (double ppq, TimeSig sig)
     const double beatStart = barStart + (bb.beat - 1) * sig.beatLength();
     // Real 16th notes (a quarter of a quarter note): 4 per beat in x/4, 2 in x/8.
     const int perBeat = std::max (1, static_cast<int> (std::round (sig.beatLength() / 0.25)));
-    const int sixteenth = std::clamp (1 + static_cast<int> (std::floor ((ppq - beatStart) / 0.25 + kEps)), 1, perBeat);
+    const int sixteenth = std::clamp (1 + whole (std::floor ((ppq - beatStart) / 0.25 + kEps)), 1, perBeat);
     return std::to_string (bb.bar) + "." + std::to_string (bb.beat) + "." + std::to_string (sixteenth);
 }
 
@@ -547,11 +554,11 @@ Countdown countdownAt (const Song& song, double ppq, TimeSig sig, const CountSet
     if (bars <= 1.0 + kEps)
     {
         out.kind  = Countdown::Kind::beats;
-        out.value = std::max (1, static_cast<int> (std::ceil (remaining / sig.beatLength() - kEps)));
+        out.value = std::max (1, whole (std::ceil (remaining / sig.beatLength() - kEps)));
         return out;
     }
 
-    const int barsLeft = static_cast<int> (std::ceil (bars - kEps)) - 1;   // full bars before the counted bar
+    const int barsLeft = whole (std::ceil (bars - kEps)) - 1;   // full bars before the counted bar
     if (barsLeft > settings.countInBars)
         return none;
 

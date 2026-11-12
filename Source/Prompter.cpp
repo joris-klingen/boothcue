@@ -23,6 +23,7 @@ namespace
 std::string describeDistance (double beats, TimeSig sig)
 {
     const double bar = sig.barLength();
+    beats = std::isfinite (beats) ? std::min (beats, 1.0e9) : 0.0;   // whatever the host's position was: a count that fits
     if (beats > bar + kEps)
     {
         const int n = static_cast<int> (std::ceil (beats / bar - kEps));

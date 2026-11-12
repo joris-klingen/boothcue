@@ -409,6 +409,11 @@ namespace
         // Never a beat outside the bar, whatever the host says.
         EXPECT (barBeatAt (30, sig, true, 16).beat == 4);
         EXPECT (barBeatAt (0, TimeSig { 0, 0 }).bar == 1);   // nonsense signature: treated as 4/4
+        // A nonsense position (hosts do hand them over) is still a number that can be shown.
+        EXPECT (barBeatAt (std::nan (""), sig).bar == 1 && barBeatAt (std::nan (""), sig).beat == 1);
+        EXPECT (barBeatAt (1.0e300, sig).bar == 1000000001 && barBeatAt (-1.0e300, sig).bar == -999999999);
+        EXPECT (formatPosition (std::nan (""), sig) == "1.1.1");
+        EXPECT (describeDistance (1.0e300, sig) == "250000000 bars" && describeDistance (std::nan (""), sig) == "1 beat");
 
         EXPECT (formatPosition (0, sig) == "1.1.1");
         EXPECT (formatPosition (57.5, sig) == "15.2.3");
