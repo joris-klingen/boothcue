@@ -30,6 +30,10 @@ with non-trivial commits. The plan and open backlog are in [TODO.md](TODO.md).
 
 ## Changelog
 
+- **New key for the phones**: *Phones...* has a *New key* button (asked
+  twice). It has the Bovenburen manager make a new key (`POST
+  /api/phones/new-key`, this computer only) and shows the new QR code; the old
+  address stops working.
 - **A paragraph at a time**: *Whole paragraph* shows the lyrics per paragraph
   (the lines between two blank lines of the text) with the line being sung
   bright, instead of line by line. `LyricLine::paraStart` keeps where the

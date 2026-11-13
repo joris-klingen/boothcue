@@ -14,8 +14,10 @@ namespace boothcue
 // (../bovenburen_manager, started with --lan): GET /api/phones on
 // 127.0.0.1:8770, which it answers only to this computer, returns the page's
 // network address with its key. A phone that opens it once is remembered by
-// the manager. The request runs on its own thread; nothing here touches the
-// audio thread or the plugin state.
+// the manager. "New key" (asked twice) has the manager make a new key (POST
+// /api/phones/new-key): the old address stops working and every phone scans
+// the new code once. The requests run on their own thread; nothing here
+// touches the audio thread or the plugin state.
 class PhonesPanel final : public juce::Component
 {
 public:
@@ -37,13 +39,16 @@ private:
     class Fetch;
 
     void show (const juce::String& newAddress, const juce::String& newMessage);
-    void ask();
+    void ask (bool newKey = false);
+    void armNewKey (bool armed);
 
     juce::String address, message;
     std::vector<std::vector<bool>> modules;
     juce::Rectangle<int> codeArea, textArea;
     juce::TextButton copyButton  { "Copy address" };
     juce::TextButton retryButton { "Try again" };
+    juce::TextButton keyButton   { "New key" };
+    bool keyArmed = false;   // "New key" was clicked once: the next click does it
     std::unique_ptr<Fetch> fetch;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PhonesPanel)

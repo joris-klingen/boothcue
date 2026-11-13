@@ -17,23 +17,33 @@ namespace
 class PhonesPanel::Fetch final : public juce::Thread
 {
 public:
-    explicit Fetch (PhonesPanel& p) : juce::Thread ("BoothCue phones"), panel (&p) {}
+    Fetch (PhonesPanel& p, bool makeNewKey) : juce::Thread ("BoothCue phones"), panel (&p), newKey (makeNewKey) {}
     ~Fetch() override { stopThread (4000); }
 
     void run() override
     {
         juce::String found, note;
-        const juce::URL url ("http://127.0.0.1:" + juce::String (managerPort) + "/api/phones");
+        const juce::String base ("http://127.0.0.1:" + juce::String (managerPort) + "/api/phones");
         int status = 0;
-        auto stream = url.createInputStream (juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
-                                                 .withConnectionTimeoutMs (2000)
-                                                 .withStatusCode (&status));
+        // A new key is asked for with a POST (an empty JSON object), the address with a GET.
+        auto stream = newKey
+            ? juce::URL (base + "/new-key").withPOSTData ("{}").createInputStream (
+                  juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inPostData)
+                      .withExtraHeaders ("Content-Type: application/json")
+                      .withConnectionTimeoutMs (2000)
+                      .withStatusCode (&status))
+            : juce::URL (base).createInputStream (
+                  juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
+                      .withConnectionTimeoutMs (2000)
+                      .withStatusCode (&status));
         if (stream == nullptr)
             note = "The Bovenburen manager isn't running on this Mac. Start it with phone access (--lan), then try again.";
         else
         {
             const auto reply = juce::JSON::parse (stream->readEntireStreamAsString());
-            if (status != 200)
+            if (status == 404 && newKey)
+                note = "This Bovenburen manager can't make a new key yet. Quit it and open it again, then try once more.";
+            else if (status != 200)
                 note = "The manager didn't give the address (" + juce::String (status) + ").";
             else if (! static_cast<bool> (reply["lan"]))
                 note = "The manager runs for this Mac only. Restart it with --lan so phones can reach it.";
@@ -51,14 +61,25 @@ public:
 
 private:
     juce::Component::SafePointer<PhonesPanel> panel;
+    const bool newKey;
 };
 
 PhonesPanel::PhonesPanel()
 {
     copyButton.onClick  = [this] { juce::SystemClipboard::copyTextToClipboard (address); };
     retryButton.onClick = [this] { ask(); };
+    // Asked twice: a new key shuts every phone out until it scans the new code.
+    keyButton.onClick = [this]
+    {
+        if (! keyArmed)
+            return armNewKey (true);
+        armNewKey (false);
+        ask (true);
+    };
+    keyButton.setTooltip ("Make a new key: the old address stops working, every phone scans the new code once");
     addAndMakeVisible (copyButton);
     addChildComponent (retryButton);
+    addChildComponent (keyButton);
     setSize (320, 420);
     ask();
 }
@@ -74,12 +95,20 @@ PhonesPanel::PhonesPanel (const juce::String& givenAddress)
 
 PhonesPanel::~PhonesPanel() = default;   // ~Fetch waits for the request
 
-void PhonesPanel::ask()
+void PhonesPanel::ask (bool newKey)
 {
     fetch.reset();
     show ({}, asking);
-    fetch = std::make_unique<Fetch> (*this);
+    fetch = std::make_unique<Fetch> (*this, newKey);
     fetch->startThread();
+}
+
+void PhonesPanel::armNewKey (bool armed)
+{
+    keyArmed = armed;
+    keyButton.setButtonText (armed ? "Sure? Phones scan again" : "New key");
+    keyButton.setColour (juce::TextButton::textColourOffId, armed ? theme::count : theme::text);
+    resized();
 }
 
 void PhonesPanel::show (const juce::String& newAddress, const juce::String& newMessage)
@@ -90,6 +119,9 @@ void PhonesPanel::show (const juce::String& newAddress, const juce::String& newM
     if (address.isNotEmpty() && modules.empty())
         message = "The address is too long for a QR code.";
     copyButton.setVisible (address.isNotEmpty());
+    keyButton.setVisible (address.isNotEmpty() && fetch != nullptr);   // not for a given address
+    if (keyArmed)
+        armNewKey (false);
     retryButton.setVisible (address.isEmpty() && fetch != nullptr && message != asking);
     resized();
     repaint();
@@ -110,8 +142,16 @@ void PhonesPanel::resized()
 {
     auto area = getLocalBounds().reduced (16);
     auto buttons = area.removeFromBottom (28);
-    copyButton.setBounds (buttons.withSizeKeepingCentre (130, 28));
     retryButton.setBounds (buttons.withSizeKeepingCentre (110, 28));
+    if (keyButton.isVisible())
+    {
+        // The address to copy on the left, the new key on the right (wider while it asks again).
+        keyButton.setBounds (buttons.removeFromRight (keyArmed ? 170 : 90));
+        buttons.removeFromRight (8);
+        copyButton.setBounds (buttons);
+    }
+    else
+        copyButton.setBounds (buttons.withSizeKeepingCentre (130, 28));
     area.removeFromBottom (10);
     area.removeFromTop (28);   // title
     const int side = juce::jmin (area.getWidth(), area.getHeight() - 70);
