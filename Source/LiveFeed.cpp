@@ -1,0 +1,128 @@
+#include "LiveFeed.h"
+
+#include "Theme.h"
+
+namespace boothcue
+{
+
+namespace
+{
+    juce::String str (const std::string& s) { return juce::String::fromUTF8 (s.c_str()); }
+
+    juce::var sectionName (const Song& song, int index)
+    {
+        if (index < 0 || index >= static_cast<int> (song.sections().size()))
+            return {};
+        const auto& name = song.sections()[static_cast<size_t> (index)].name;
+        return name.empty() ? juce::String ("(unnamed)") : str (name);
+    }
+}
+
+LiveFeed::LiveFeed() : juce::Thread ("BoothCue live feed")
+{
+    startThread();
+}
+
+LiveFeed::~LiveFeed()
+{
+    signalThreadShouldExit();
+    wake.signal();
+    stopThread (3000);
+}
+
+void LiveFeed::post (const juce::String& json)
+{
+    {
+        const juce::ScopedLock sl (lock);
+        pending = json;
+        hasPending = true;
+    }
+    wake.signal();
+}
+
+void LiveFeed::run()
+{
+    const juce::URL endpoint ("http://127.0.0.1:" + juce::String (managerPort) + "/api/live");
+    while (! threadShouldExit())
+    {
+        wake.wait (1000);
+        juce::String json;
+        {
+            const juce::ScopedLock sl (lock);
+            if (! hasPending)
+                continue;
+            json = pending;
+            hasPending = false;
+        }
+
+        int status = 0;
+        auto stream = endpoint.withPOSTData (json).createInputStream (
+            juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inPostData)
+                .withExtraHeaders ("Content-Type: application/json")
+                .withConnectionTimeoutMs (500)
+                .withStatusCode (&status));
+        const bool ok = stream != nullptr && status == 200;
+        connected = ok;
+        if (! ok)
+            wait (3000);   // no manager: try again in a while, with the newest scene by then
+    }
+}
+
+juce::String LiveFeed::sceneJson (const PrompterScene& s, const Song& song, const TransportState& t,
+                                  const juce::String& songId, const juce::String& track)
+{
+    auto* o = new juce::DynamicObject();
+    juce::var root (o);
+    o->setProperty ("v", 1);
+    o->setProperty ("song", songId);
+    o->setProperty ("track", track);
+    o->setProperty ("hasPosition", s.hasPosition);
+    o->setProperty ("playing", s.playing);
+    o->setProperty ("recording", s.recording);
+    o->setProperty ("looping", s.looping);
+    o->setProperty ("ppq", s.ppq);
+    o->setProperty ("bpm", t.bpm);
+    o->setProperty ("sig", juce::String (s.sig.num) + "/" + juce::String (s.sig.den));
+    o->setProperty ("bar", s.barBeat.bar);
+    o->setProperty ("beat", s.barBeat.beat);
+
+    juce::Array<juce::var> parts;
+    for (const auto& sec : song.sections())
+    {
+        auto* p = new juce::DynamicObject();
+        p->setProperty ("name", sec.name.empty() ? juce::String ("(unnamed)") : str (sec.name));
+        p->setProperty ("start", sec.start);
+        p->setProperty ("end", sec.end);
+        p->setProperty ("color", "#" + theme::partColour (sec).toDisplayString (false));
+        parts.add (juce::var (p));
+    }
+    o->setProperty ("parts", parts);
+
+    o->setProperty ("part", s.section);
+    o->setProperty ("partName", sectionName (song, s.section));
+    o->setProperty ("next", s.nextSection);
+    o->setProperty ("nextName", sectionName (song, s.nextSection));
+    if (s.nextSection >= 0)
+        o->setProperty ("nextIn", str (describeDistance (s.beatsToNextSection, s.sig)));
+
+    if (s.hasLyrics)
+    {
+        o->setProperty ("line", str (s.currentLine));
+        o->setProperty ("nextLine", str (s.nextLine));
+        if (s.nextCue >= 0)
+            o->setProperty ("nextLineIn", str (describeDistance (s.beatsToNextLine, s.sig)));
+        if (s.countdown.kind != Countdown::Kind::none)
+            o->setProperty ("count", (s.countdown.kind == Countdown::Kind::beats ? juce::String (s.countdown.value)
+                                      : juce::String (s.countdown.value) + (s.countdown.value == 1 ? " bar" : " bars")));
+    }
+    if (s.hasChords)
+    {
+        o->setProperty ("prevChord", str (s.prevChord));
+        o->setProperty ("chord", str (s.chord));
+        o->setProperty ("nextChord", str (s.nextChord));
+        o->setProperty ("chordUnsure", s.chordUnsure);
+    }
+    return juce::JSON::toString (root, true);
+}
+
+}  // namespace boothcue

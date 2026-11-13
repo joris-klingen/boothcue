@@ -15,6 +15,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "ChordMidi.h"
+#include "LiveFeed.h"
 #include "LyricImport.h"
 #include "PhonesPanel.h"
 #include "PluginProcessor.h"
@@ -734,8 +735,29 @@ namespace
 
     // The Phones panel: a QR code for a manager address, round trip through the
     // encoder; with BOOTHCUE_EDITOR_PNG set, a snapshot next to the editor's.
-    void phonesTests()
+    void phonesTests (const juce::File& fixtures)
     {
+        // The live view's JSON: the parts with their colours, the part and line at the position.
+        {
+            BoothCueAudioProcessor p;
+            p.linkSet (fixtures.getChildFile ("parts.als"));
+            waitFor (p, State::ok);
+            p.setLyrics (parseLyrics ("[Verse 1]\nStreetlights hum\n[Chorus]\nHold on, hold on\n"));
+            TransportState t;
+            t.valid = t.playing = true;
+            t.ppq = 49.0;
+            t.bpm = 96.0;
+            const auto json = LiveFeed::sceneJson (buildScene (p.getSong(), t, DisplaySettings()), p.getSong(), t,
+                                                   "papa-is-even-weg", "Vocals");
+            const auto v = juce::JSON::parse (json);
+            EXPECT (v["song"].toString() == "papa-is-even-weg" && v["track"].toString() == "Vocals");
+            EXPECT (v["parts"].size() == static_cast<int> (p.getSong().sections().size()) && v["parts"].size() > 0);
+            EXPECT (v["parts"][0]["color"].toString().startsWith ("#") && v["parts"][0]["color"].toString().length() == 7);
+            EXPECT (static_cast<bool> (v["playing"]) && static_cast<int> (v["bar"]) == 13);
+            EXPECT (v["partName"].toString().isNotEmpty() && static_cast<int> (v["part"]) >= 0);
+            pump (50);
+        }
+
         const juce::String address ("http://192.168.1.20:8770/?key=AbCdEfGhIjKl");
         const auto code = PhonesPanel::encode (address);
         EXPECT (code.size() >= 21 && code.size() <= 41 && code.front().size() == code.size());
@@ -890,7 +912,7 @@ int main (int argc, char** argv)
         chordMidiTests();
         settingsTests();
         editorSnapshot (fixtures);
-        phonesTests();
+        phonesTests (fixtures);
     }
     else
         std::printf ("plugin-smoke: no fixtures dir given, skipping the link checks\n");

@@ -78,6 +78,7 @@ if(BOOTHCUE_BUILD_PLUGIN)
     endif()
 
     target_sources(BoothCue PRIVATE
+        Source/LiveFeed.cpp
         Source/PhonesPanel.cpp
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp

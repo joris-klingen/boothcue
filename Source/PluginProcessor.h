@@ -16,6 +16,7 @@ namespace boothcue
 {
 
 class DisplayWindow;
+class LiveFeed;
 
 // BoothCue: shows the singer the lyrics and the song position while tracking.
 //
@@ -205,6 +206,12 @@ private:
     DisplaySettings displaySettings;
     juce::uint32 contentVersion = 1;
     std::unique_ptr<DisplayWindow> displayWindow;
+
+    // The live view for phones (LiveFeed.h): the scene, sent from the timer.
+    std::unique_ptr<LiveFeed> liveFeed;
+    juce::String lastLiveJson;
+    double lastLiveMs = 0.0;
+    void postLiveScene();
     juce::String displayPlacement;   // ResizableWindow state string, kept while it is closed too
     juce::Rectangle<int> windowedBounds;
     juce::Point<int> editorSize;

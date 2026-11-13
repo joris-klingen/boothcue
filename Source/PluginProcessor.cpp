@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 
 #include "DisplayWindow.h"
+#include "LiveFeed.h"
 #include "LyricImport.h"
 #include "PluginEditor.h"
 
@@ -85,6 +86,7 @@ BoothCueAudioProcessor::BoothCueAudioProcessor()
 {
     song.setTimeSig (TimeSig());   // until the host says otherwise
     updateStateSnapshot();
+    liveFeed = std::make_unique<LiveFeed>();
     startTimerHz (kTimerHz);
 }
 
@@ -93,6 +95,7 @@ BoothCueAudioProcessor::~BoothCueAudioProcessor()
     // The window is a GUI object: hosts delete plugins on the message thread.
     JUCE_ASSERT_MESSAGE_THREAD
     stopTimer();
+    liveFeed.reset();
     displayWindow.reset();
 }
 
@@ -256,6 +259,30 @@ void BoothCueAudioProcessor::timerCallback()
                 watcher.rescan();
             ++contentVersion;
         }
+    }
+
+    postLiveScene();
+}
+
+// The phones get everything the display can show (parts, lyrics, full chord
+// names), whatever the singer display's own toggles are. Sent when it changes,
+// and once a second anyway so the manager knows BoothCue is still there.
+void BoothCueAudioProcessor::postLiveScene()
+{
+    if (liveFeed == nullptr)
+        return;
+    auto settings = displaySettings;
+    settings.showSongPart = settings.showLyrics = settings.showChords = true;
+    settings.showBassNote = false;
+    const auto t = transport.read();
+    const auto json = LiveFeed::sceneJson (buildScene (song, t, settings), song, t,
+                                           songFolder.getFileName(), getTrackName());
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    if (json != lastLiveJson || now - lastLiveMs > 1000.0)
+    {
+        liveFeed->post (json);
+        lastLiveJson = json;
+        lastLiveMs = now;
     }
 }
 
