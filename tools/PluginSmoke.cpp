@@ -875,7 +875,9 @@ namespace
             t.valid = t.playing = true;
             t.ppq = 49.0;
             t.bpm = 96.0;
-            const auto json = LiveFeed::sceneJson (buildScene (p.getSong(), t, DisplaySettings()), p.getSong(), t,
+            DisplaySettings forPhones;
+            forPhones.paragraph = true;   // as postLiveScene: each phone picks lines or the paragraph
+            const auto json = LiveFeed::sceneJson (buildScene (p.getSong(), t, forPhones), p.getSong(), t,
                                                    "papa-is-even-weg", "Vocals");
             const auto v = juce::JSON::parse (json);
             EXPECT (v["song"].toString() == "papa-is-even-weg" && v["track"].toString() == "Vocals");
@@ -883,6 +885,7 @@ namespace
             EXPECT (v["parts"][0]["color"].toString().startsWith ("#") && v["parts"][0]["color"].toString().length() == 7);
             EXPECT (static_cast<bool> (v["playing"]) && static_cast<int> (v["bar"]) == 13);
             EXPECT (v["partName"].toString().isNotEmpty() && static_cast<int> (v["part"]) >= 0);
+            EXPECT (v["paragraph"].size() > 0 && v["line"].toString().isNotEmpty());
             // The phone's ticker: every chord run as [start, end, name], in order.
             EXPECT (v["chords"].size() > 0 && v["chords"][0].size() == 3 && v["chords"][0][2].toString().isNotEmpty());
             for (int i = 1; i < v["chords"].size(); ++i)

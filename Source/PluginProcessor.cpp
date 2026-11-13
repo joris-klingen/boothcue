@@ -373,6 +373,7 @@ void BoothCueAudioProcessor::postLiveScene()
     auto settings = displaySettings;
     settings.showSongPart = settings.showLyrics = settings.showChords = true;
     settings.showBassNote = false;
+    settings.paragraph = true;        // each phone picks lines or the whole paragraph itself
     settings.count.enabled = false;   // the band knows the songs: a line shown ahead is reminder enough
     const auto t = transport.read();
     const auto json = LiveFeed::sceneJson (buildScene (song, t, settings), song, t,

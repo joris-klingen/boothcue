@@ -35,10 +35,11 @@ with non-trivial commits. The plan and open backlog are in [TODO.md](TODO.md).
   /api/phones/new-key`, this computer only) and shows the new QR code; the old
   address stops working.
 - **A paragraph at a time**: *Whole paragraph* shows the lyrics per paragraph
-  (the lines between two blank lines of the text) with the line being sung
-  bright, instead of line by line. `LyricLine::paraStart` keeps where the
+  (the lines between two blank lines of the text), plain (one size, one
+  colour), instead of line by line. `LyricLine::paraStart` keeps where the
   blank lines were (also in the state and in the text written back);
-  `PrompterScene::paragraph` / `paragraphLine`. Not on the phones.
+  `PrompterScene::paragraph` / `paragraphLine`. The phone feed always carries
+  the paragraph; each phone picks lines or paragraph itself.
 - **Space left to Live, chords per part, chords for the phones**: the editor
   and the singer display no longer take the space bar (it is Live's play /
   stop; **T** still taps). In the ticker every part starts with its chord,

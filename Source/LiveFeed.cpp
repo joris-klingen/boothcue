@@ -111,6 +111,11 @@ juce::String LiveFeed::sceneJson (const PrompterScene& s, const Song& song, cons
         o->setProperty ("lineAhead", s.lineAhead);   // shown ahead of its first word
         o->setProperty ("nextLine", str (s.nextLine));
         o->setProperty ("laterLine", str (s.laterLine));
+        // The paragraph of the line (see DisplaySettings::paragraph), for phones that show that.
+        juce::Array<juce::var> paragraph;
+        for (const auto& line : s.paragraph)
+            paragraph.add (str (line));
+        o->setProperty ("paragraph", paragraph);
         if (s.nextCue >= 0)
             o->setProperty ("nextLineIn", str (describeDistance (s.beatsToNextLine, s.sig)));
         if (s.countdown.kind != Countdown::Kind::none)

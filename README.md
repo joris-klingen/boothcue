@@ -186,7 +186,7 @@ The link is saved with the set. *Unlink song* stops following; what is shown sta
 | Setting | Options |
 |---------|---------|
 | Show | Song part · Lyrics · Chords · Bass note |
-| Whole paragraph | The lyrics a paragraph at a time (the lines between two blank lines), the line being sung bright, instead of line by line. Enough on a large second screen such as an iPad. |
+| Whole paragraph | The lyrics a paragraph at a time (the lines between two blank lines), plain, instead of line by line. Enough on a large second screen such as an iPad. |
 | Text size | 50 - 200 % |
 | Count-in | Off (the default) · Last bar only (4-3-2-1) · 1, 2 or 4 bars, then 4-3-2-1 |
 | Show a line ahead by | Nothing · a quarter bar · half a bar · 1 bar (the default) · 2 bars: how long before its first word a line takes the large row. Never more than half the time since the line before it |

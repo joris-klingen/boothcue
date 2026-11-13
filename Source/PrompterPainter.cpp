@@ -298,25 +298,20 @@ void PrompterPainter::paintLyrics (juce::Graphics& g, juce::Rectangle<float> are
     currentLines = 0;
     if (! s.paragraph.empty())
     {
-        // The whole paragraph, one size for all its lines: the line being sung
-        // white, the ones sung already faint, the ones to come grey.
+        // The whole paragraph, plain: one size and one colour for all its
+        // lines, nothing that changes while it is sung.
         const auto n = static_cast<float> (s.paragraph.size());
         float size = juce::jmin (8.0f * unit, area.getHeight() / (n * 1.3f));
         float widest = 1.0f;
         for (const auto& line : s.paragraph)
-            widest = juce::jmax (widest, juce::GlyphArrangement::getStringWidth (font (size, true), str (line)));
+            widest = juce::jmax (widest, juce::GlyphArrangement::getStringWidth (font (size), str (line)));
         size *= juce::jmin (1.0f, (area.getWidth() - 4.0f * unit) / widest);
         const float rowH = size * 1.3f;
         auto rows = area.withSizeKeepingCentre (area.getWidth(), rowH * n);
-        for (std::size_t i = 0; i < s.paragraph.size(); ++i)
-        {
-            const int at = static_cast<int> (i);
-            const bool now = at == s.paragraphLine;
-            g.setColour (now ? theme::text.withAlpha (s.lineAhead ? 0.72f : 1.0f)
-                             : at < s.paragraphLine ? theme::dim.withAlpha (0.55f) : theme::dim);
-            g.setFont (font (size, now));
-            g.drawText (str (s.paragraph[i]), rows.removeFromTop (rowH), juce::Justification::centred, false);
-        }
+        g.setColour (theme::text);
+        g.setFont (font (size));
+        for (const auto& line : s.paragraph)
+            g.drawText (str (line), rows.removeFromTop (rowH), juce::Justification::centred, false);
         currentLines = s.paragraphLine >= 0 ? 1 : 0;
         return;
     }
