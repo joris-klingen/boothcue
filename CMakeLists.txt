@@ -62,6 +62,20 @@ if(BOOTHCUE_BUILD_PLUGIN)
         VST3_CATEGORIES             Fx Tools
     )
 
+    # JUCE signs the bundles ad hoc before its later post-build steps (the VST3's
+    # moduleinfo.json is written after signing), so the built bundles fail
+    # `codesign --verify`. Run JUCE's own check once more as the last step: it
+    # re-signs ad hoc only when the signature is invalid. (The optional
+    # BOOTHCUE_COPY_PLUGIN copy runs before this step; install.command does not.)
+    if(APPLE)
+        foreach(bundle_target BoothCue_VST3 BoothCue_Standalone)
+            add_custom_command(TARGET ${bundle_target} POST_BUILD
+                COMMAND "${CMAKE_COMMAND}" "-Dsrc=$<TARGET_BUNDLE_DIR:${bundle_target}>"
+                        -P "${JUCE_CMAKE_UTILS_DIR}/checkBundleSigning.cmake"
+                VERBATIM)
+        endforeach()
+    endif()
+
     target_sources(BoothCue PRIVATE
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
