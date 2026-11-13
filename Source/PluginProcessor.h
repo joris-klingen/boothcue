@@ -104,6 +104,20 @@ public:
     void reloadSet();
     const LinkStatus& getLinkStatus() const noexcept                    { return linkStatus; }
 
+    // ---- the linked song folder (message thread) ---------------------------------
+    // A song's folder in the band's songbook (bovenburen_manager). Its
+    // lyrics.txt and chords.txt are read whenever they change and shown as
+    // they are; BoothCue never writes those two, the songbook is their master.
+    // The starts tapped here are written next to them as timings.txt (the
+    // timed lyrics, as Save writes them) and laid over the text when it is read.
+    void linkSongFolder (const juce::File&);
+    void unlinkSongFolder();
+    juce::File getSongFolder() const                                    { return songFolder; }
+    juce::String getSongFolderStatus() const                            { return songFolderStatus; }
+    // Looks at the folder's files and writes the timings when they changed.
+    // The timer calls it once a second.
+    void pollSongFolder();
+
     // ---- the chords database (message thread) -----------------------------------
     // The chords shown are BoothCue's own: detected from the set's MIDI after
     // every save, until they are edited or imported as a chart. From then on
@@ -197,6 +211,27 @@ private:
 
     SetWatcher watcher;
     LinkStatus linkStatus;
+
+    // One text file of the song folder. It is small, so it is simply read at
+    // every poll (a file's time stamp can be too coarse to show a quick second
+    // save); a new text is taken once two polls in a row read the same, so a
+    // half-written file isn't.
+    struct WatchedText
+    {
+        juce::String text;                 // as taken
+        juce::String seen;                 // as read at the last poll
+        bool poll (const juce::File&);     // true: `text` is new
+        void read (const juce::File&);
+    };
+    void applyFolderLyrics();
+    void applyFolderChords();
+    void updateSongFolderStatus();
+    juce::File songFolder;
+    WatchedText folderLyrics, folderChords;
+    juce::String songFolderStatus, timingsWritten;
+    juce::Time timingsWrittenAt;
+    bool timingsDirty = false;
+    int folderTick = 0;
 
     std::vector<ChordSpan> detectedChords;
     Key detectedKey;

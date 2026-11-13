@@ -349,6 +349,17 @@ set, detects the chords and their timing, and shows them alongside the lyrics.
    half-bar slice setting; tempo and time-signature changes inside a song are
    still not handled.
 
+## Song folder (done)
+
+*Link song...* links a song's folder of the band's songbook
+(`../bovenburen_manager`): `lyrics.txt` and `chords.txt` are read at every
+poll (once a second; taken when two reads agree) and applied as Apply would,
+with the starts from `timings.txt` and from the current state laid over the
+text (`keepStarts`). Taps, nudges and clears write `timings.txt`. The two
+text files are never written. Open: showing in the Lyrics / Chords tabs that
+the text follows the folder (editing it there is overwritten by the next change
+in the songbook), and sending the playhead to phones (the plan's step 4).
+
 ## Later
 
 - **Timings from the set** (a proposal, accepted per section, then tapped /

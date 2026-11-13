@@ -13,6 +13,7 @@ namespace
     // way older builds can't read.
     const juce::Identifier kStateType { "BoothCue" };
     const juce::Identifier kVersion   { "version" };
+    const juce::Identifier kSongFolder { "songFolder" };
     constexpr int kStateVersion = 1;
 
     // <Set path="/…/Song.als" track="Parts" fallback="0">
@@ -237,6 +238,12 @@ void BoothCueAudioProcessor::timerCallback()
     if (watcher.takeReport (report) && report.file == linkStatus.file)
         applyReport (report);
 
+    if (++folderTick >= 10)   // once a second
+    {
+        folderTick = 0;
+        pollSongFolder();
+    }
+
     // Untimed lines spread on the host's bar grid; chords are detected on it.
     if (const auto t = transport.read(); t.valid)
     {
@@ -282,6 +289,7 @@ void BoothCueAudioProcessor::applyReport (const SetWatcher::Report& report)
         detectedKey = c.result.key;
         if (! chordsEdited)
             song.setChords (c.result.spans, c.result.key);
+        applyFolderChords();   // the songbook's chart, on the parts just read
         if (! c.anyNotes || c.result.spans.empty())
         {
             linkStatus.chordSummary = {};
@@ -312,6 +320,190 @@ void BoothCueAudioProcessor::applyReport (const SetWatcher::Report& report)
     linkStatus.sections = static_cast<int> (song.sections().size());
     ++contentVersion;
     updateStateSnapshot();
+}
+
+// ---- the linked song folder (message thread) ----------------------------------------------
+
+namespace
+{
+const char* const kLyricsFile  = "lyrics.txt";
+const char* const kChordsFile  = "chords.txt";
+const char* const kTimingsFile = "timings.txt";
+}
+
+namespace
+{
+juce::String readSmallText (const juce::File& file)
+{
+    // A songbook text is small; anything huge is not one.
+    return file.existsAsFile() && file.getSize() < 1024 * 1024 ? file.loadFileAsString() : juce::String();
+}
+}
+
+void BoothCueAudioProcessor::WatchedText::read (const juce::File& file)
+{
+    text = seen = readSmallText (file);
+}
+
+bool BoothCueAudioProcessor::WatchedText::poll (const juce::File& file)
+{
+    const auto now = readSmallText (file);
+    const bool held = now == seen;
+    seen = now;
+    if (! held || now == text)
+        return false;
+    text = now;
+    return true;
+}
+
+void BoothCueAudioProcessor::linkSongFolder (const juce::File& folder)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    songFolder = folder;
+    folderLyrics = WatchedText();
+    folderChords = WatchedText();
+    timingsWritten = {};
+    timingsWrittenAt = {};
+    folderLyrics.read (folder.getChildFile (kLyricsFile));
+    folderChords.read (folder.getChildFile (kChordsFile));
+    applyFolderLyrics();
+    applyFolderChords();
+    // Starts tapped before the folder was linked go into it too.
+    timingsDirty = true;
+    updateSongFolderStatus();
+    ++contentVersion;
+    updateStateSnapshot();
+}
+
+void BoothCueAudioProcessor::unlinkSongFolder()
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    // The lyrics and chords stay as they are: they are saved with the set.
+    songFolder = juce::File();
+    folderLyrics = WatchedText();
+    folderChords = WatchedText();
+    timingsDirty = false;
+    songFolderStatus = {};
+    ++contentVersion;
+    updateStateSnapshot();
+}
+
+void BoothCueAudioProcessor::pollSongFolder()
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    if (songFolder == juce::File())
+        return;
+
+    bool changed = false;
+    if (folderLyrics.poll (songFolder.getChildFile (kLyricsFile)))
+    {
+        applyFolderLyrics();
+        changed = true;
+    }
+    if (folderChords.poll (songFolder.getChildFile (kChordsFile)))
+    {
+        applyFolderChords();
+        changed = true;
+    }
+
+    if (timingsDirty)
+    {
+        timingsDirty = false;
+        bool anyStart = false;
+        for (const auto& b : song.blocks())
+            for (const auto& l : b.lines)
+                anyStart = anyStart || l.timed() || l.hasAt;
+        const auto text = getTimedLyrics();
+        const auto file = songFolder.getChildFile (kTimingsFile);
+        // Nothing tapped and no file yet: don't make one.
+        if (text != timingsWritten && songFolder.isDirectory() && (anyStart || file.existsAsFile()))
+        {
+            if (file.replaceWithText (text, false, false, "\n"))
+            {
+                timingsWritten = text;
+                timingsWrittenAt = juce::Time::getCurrentTime();
+                changed = true;
+            }
+        }
+    }
+
+    const auto before = songFolderStatus;
+    updateSongFolderStatus();
+    if (changed || before != songFolderStatus)
+    {
+        ++contentVersion;
+        updateStateSnapshot();
+    }
+}
+
+void BoothCueAudioProcessor::applyFolderLyrics()
+{
+    if (folderLyrics.text.trim().isEmpty())
+        return;   // no lyrics in the songbook (yet): keep what is here
+
+    auto blocks = parseLyrics (folderLyrics.text.toStdString());
+    // Starts: those saved in the folder, and over them the ones already here.
+    const auto saved = songFolder.getChildFile (kTimingsFile);
+    keepStarts (parseLyrics (readSmallText (saved).toStdString()), blocks);
+    keepStarts (song.blocks(), blocks);
+
+    // The same text with the same starts: leave the cursor and the undo alone.
+    const auto& now = song.blocks();
+    bool same = now.size() == blocks.size();
+    for (std::size_t b = 0; same && b < blocks.size(); ++b)
+    {
+        same = now[b].header == blocks[b].header && now[b].lines.size() == blocks[b].lines.size();
+        for (std::size_t l = 0; same && l < blocks[b].lines.size(); ++l)
+        {
+            const auto& x = now[b].lines[l];
+            const auto& y = blocks[b].lines[l];
+            same = x.text == y.text && juce::exactlyEqual (x.offset, y.offset) && x.hasAt == y.hasAt
+                   && (! x.hasAt || (x.atBar == y.atBar && x.atBeat == y.atBeat && x.atSixteenth == y.atSixteenth));
+        }
+    }
+    if (same)
+        return;
+
+    song.setBlocks (std::move (blocks));
+    hasUndo = false;
+    tapCursor = TapCursor();
+}
+
+void BoothCueAudioProcessor::applyFolderChords()
+{
+    if (songFolder == juce::File() || folderChords.text.trim().isEmpty() || song.sections().empty())
+        return;   // no chart, or no parts yet to lay it on (it is applied again when the set is read)
+    auto result = chartToChords (folderChords.text.toStdString(), song.sections(), song.timeSig());
+    if (result.chords.empty())
+        return;
+    song.setChords (std::move (result.chords), song.key());
+    chordsEdited = true;
+    hasChordUndo = false;
+}
+
+void BoothCueAudioProcessor::updateSongFolderStatus()
+{
+    if (songFolder == juce::File())
+    {
+        songFolderStatus = {};
+        return;
+    }
+    if (! songFolder.isDirectory())
+    {
+        songFolderStatus = "Song folder \"" + songFolder.getFileName() + "\" not found.";
+        return;
+    }
+    juce::StringArray has;
+    if (folderLyrics.text.trim().isNotEmpty())
+        has.add ("lyrics");
+    if (folderChords.text.trim().isNotEmpty())
+        has.add ("chords");
+    songFolderStatus = "Song \"" + songFolder.getFileName() + "\": "
+                       + (has.isEmpty() ? juce::String ("no lyrics or chords in it yet") : has.joinIntoString (" and ") + " follow it");
+    if (timingsWrittenAt != juce::Time())
+        songFolderStatus << ". Timings saved " << timingsWrittenAt.toString (false, true, false, true) << ".";
+    else
+        songFolderStatus << ".";
 }
 
 // ---- the chords database (message thread) -------------------------------------------------
@@ -414,6 +606,7 @@ void BoothCueAudioProcessor::pushUndo (const juce::String& name)
 
 void BoothCueAudioProcessor::timingsChanged()
 {
+    timingsDirty = true;
     ++contentVersion;
     updateStateSnapshot();
 }
@@ -611,6 +804,8 @@ void BoothCueAudioProcessor::updateStateSnapshot()
 {
     juce::ValueTree state (kStateType);
     state.setProperty (kVersion, kStateVersion, nullptr);
+    if (songFolder != juce::File())
+        state.setProperty (kSongFolder, songFolder.getFullPathName(), nullptr);
 
     if (linkStatus.file != juce::File() || ! song.sections().empty())
     {
@@ -843,6 +1038,26 @@ void BoothCueAudioProcessor::applyState (const juce::ValueTree& state)
             showDisplay();
         else if (isDisplayVisible())
             displayWindow->closeButtonPressed();
+    }
+
+    // The song folder: its texts are read again (the state's lyrics keep their
+    // starts where the text is the same).
+    {
+        const juce::String folder = state[kSongFolder].toString();
+        songFolder = juce::File::isAbsolutePath (folder) ? juce::File (folder) : juce::File();
+        folderLyrics = WatchedText();
+        folderChords = WatchedText();
+        timingsWritten = {};
+        timingsWrittenAt = {};
+        timingsDirty = false;
+        if (songFolder != juce::File())
+        {
+            folderLyrics.read (songFolder.getChildFile (kLyricsFile));
+            folderChords.read (songFolder.getChildFile (kChordsFile));
+            applyFolderLyrics();
+            applyFolderChords();
+        }
+        updateSongFolderStatus();
     }
 
     watcher.watch (linkStatus.file);

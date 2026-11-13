@@ -122,6 +122,10 @@ private:
     juce::TextButton linkButton   { "Link set..." };
     juce::TextButton reloadButton { "Reload" };
     juce::TextButton unlinkButton { "Unlink" };
+    juce::TextButton songButton       { "Link song..." };
+    juce::TextButton songUnlinkButton { "Unlink song" };
+    juce::Rectangle<int> songArea;
+    void chooseSongFolder();
     std::unique_ptr<juce::FileChooser> chooser;
     juce::Rectangle<int> linkArea;
 

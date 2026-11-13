@@ -487,7 +487,35 @@ std::string lyricsToText (const std::vector<LyricBlock>& blocks)
     return out;
 }
 
+namespace
+{
+// Pairs the blocks and their lines up (see keepTimings) and calls
+// take (old line, new line) for every pair.
+template <typename Take>
+void pairLines (const std::vector<LyricBlock>& previous, std::vector<LyricBlock>& edited, Take take);
+}
+
 void keepTimings (const std::vector<LyricBlock>& previous, std::vector<LyricBlock>& edited)
+{
+    pairLines (previous, edited, [] (const LyricLine& old, LyricLine& line) { line.offset = old.offset; });
+}
+
+void keepStarts (const std::vector<LyricBlock>& previous, std::vector<LyricBlock>& edited)
+{
+    pairLines (previous, edited, [] (const LyricLine& old, LyricLine& line)
+    {
+        if (! old.timed() && ! old.hasAt)
+            return;
+        const auto text = line.text;
+        line = old;
+        line.text = text;
+    });
+}
+
+namespace
+{
+template <typename Take>
+void pairLines (const std::vector<LyricBlock>& previous, std::vector<LyricBlock>& edited, Take take)
 {
     const auto oldIds = occurrences (previous);
     const auto newIds = occurrences (edited);
@@ -512,12 +540,14 @@ void keepTimings (const std::vector<LyricBlock>& previous, std::vector<LyricBloc
             std::size_t i = 0, j = 0;
             while (i < a && j < b)
             {
-                if (old[i].text == lines[j].text)       { lines[j].offset = old[i].offset; ++i; ++j; }
+                if (old[i].text == lines[j].text)       { take (old[i], lines[j]); ++i; ++j; }
                 else if (lcs[i + 1][j] >= lcs[i][j + 1]) ++i;
                 else                                     ++j;
             }
             break;
         }
 }
+
+}  // namespace
 
 }  // namespace boothcue

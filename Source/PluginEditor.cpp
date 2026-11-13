@@ -184,7 +184,11 @@ BoothCueAudioProcessorEditor::BoothCueAudioProcessorEditor (BoothCueAudioProcess
     unlinkButton.onClick = [this] { processor.unlinkSet(); };
     linkButton.setTooltip ("Pick this song's Live set (.als). BoothCue reads the sections from its \"parts\" "
                            "track and reads them again every time the set is saved.");
-    for (auto* b : { &linkButton, &reloadButton, &unlinkButton })
+    songButton.onClick = [this] { chooseSongFolder(); };
+    songUnlinkButton.onClick = [this] { processor.unlinkSongFolder(); };
+    songButton.setTooltip ("Pick this song's folder in the songbook. Its lyrics.txt and chords.txt are shown and "
+                           "followed when they change; the starts you tap are saved next to them as timings.txt.");
+    for (auto* b : { &linkButton, &reloadButton, &unlinkButton, &songButton, &songUnlinkButton })
         addAndMakeVisible (*b);
 
     // Display.
@@ -492,6 +496,23 @@ void BoothCueAudioProcessorEditor::chooseSet()
                           });
 }
 
+void BoothCueAudioProcessorEditor::chooseSongFolder()
+{
+    const auto current = processor.getSongFolder();
+    const auto set = processor.getLinkStatus().file;
+    const auto start = current != juce::File() ? current.getParentDirectory()
+                     : set != juce::File()     ? set.getParentDirectory()
+                                               : juce::File::getSpecialLocation (juce::File::userMusicDirectory);
+    chooser = std::make_unique<juce::FileChooser> ("Link this song's folder in the songbook", start);
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                          [this] (const juce::FileChooser& fc)
+                          {
+                              const auto folder = fc.getResult();
+                              if (folder.isDirectory())
+                                  processor.linkSongFolder (folder);
+                          });
+}
+
 juce::String BoothCueAudioProcessorEditor::linkText (juce::Colour& colour) const
 {
     using State = BoothCueAudioProcessor::LinkStatus::State;
@@ -689,7 +710,7 @@ void BoothCueAudioProcessorEditor::importChordsMidi (const juce::File& file)
 bool BoothCueAudioProcessorEditor::isInterestedInFileDrag (const juce::StringArray& files)
 {
     for (const auto& f : files)
-        if (juce::File (f).hasFileExtension ("mid;midi;txt;text;md;als"))
+        if (juce::File (f).hasFileExtension ("mid;midi;txt;text;md;als") || juce::File (f).isDirectory())
             return true;
     return false;
 }
@@ -701,7 +722,9 @@ void BoothCueAudioProcessorEditor::filesDropped (const juce::StringArray& files,
     for (const auto& path : files)
     {
         const juce::File file (path);
-        if (file.hasFileExtension ("mid;midi"))
+        if (file.isDirectory())
+            processor.linkSongFolder (file);
+        else if (file.hasFileExtension ("mid;midi"))
             importChordsMidi (file);
         else if (file.hasFileExtension ("als"))
             processor.linkSet (file);
@@ -858,6 +881,11 @@ void BoothCueAudioProcessorEditor::resized()
     links.removeFromLeft (8);
     unlinkButton.setBounds (links.removeFromLeft (80));
     linkArea = left.removeFromTop (72).withTrimmedTop (6);
+    auto songs = left.removeFromTop (28);
+    songButton.setBounds (songs.removeFromLeft (110));
+    songs.removeFromLeft (8);
+    songUnlinkButton.setBounds (songs.removeFromLeft (100));
+    songArea = left.removeFromTop (42).withTrimmedTop (6);
 
     left.removeFromTop (22);   // "Singer display"
     displayButton.setBounds (left.removeFromTop (30).removeFromLeft (220));
@@ -955,6 +983,7 @@ void BoothCueAudioProcessorEditor::timerCallback()
     const bool linked = processor.getLinkStatus().file != juce::File();
     reloadButton.setEnabled (linked);
     unlinkButton.setEnabled (linked || ! processor.getSong().sections().empty());
+    songUnlinkButton.setEnabled (processor.getSongFolder() != juce::File());
 
     const auto& song = processor.getSong();
     if (processor.getContentVersion() != shownVersion)
@@ -979,6 +1008,7 @@ void BoothCueAudioProcessorEditor::timerCallback()
         syncSelectionToCursor();
         lineList.repaint();
         repaint (linkArea);
+        repaint (songArea);
         repaint (linesTitle);
     }
 
@@ -1029,7 +1059,7 @@ void BoothCueAudioProcessorEditor::paint (juce::Graphics& g)
                 title.removeFromTop (20), juce::Justification::centredLeft);
 
     sectionTitle (g, { leftColumn.getX(), leftColumn.getY() + 66, leftColumn.getWidth(), 18 }, "Live set");
-    sectionTitle (g, { leftColumn.getX(), linkArea.getBottom(), leftColumn.getWidth(), 18 }, "Singer display");
+    sectionTitle (g, { leftColumn.getX(), songArea.getBottom(), leftColumn.getWidth(), 18 }, "Singer display");
 
     // Under the tabs: what the text box holds / where the chords come from.
     {
@@ -1091,6 +1121,10 @@ void BoothCueAudioProcessorEditor::paint (juce::Graphics& g)
     const auto status = linkText (linkColour);
     g.setColour (linkColour);
     g.drawFittedText (status, linkArea, juce::Justification::topLeft, 5, 1.0f);
+    g.setColour (theme::dim);
+    g.drawFittedText (processor.getSongFolder() != juce::File() ? processor.getSongFolderStatus()
+                                                                : juce::String ("No song folder linked."),
+                      songArea, juce::Justification::topLeft, 3, 1.0f);
 
     // Transport readout, to check the host connection.
     auto area = readoutArea;

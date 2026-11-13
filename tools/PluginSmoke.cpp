@@ -256,6 +256,82 @@ namespace
         p.processBlock (buffer, midi);
     }
 
+    // The song folder of the songbook: texts in, tapped starts out.
+    void songFolderTests (const juce::File& fixtures)
+    {
+        const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                .getChildFile ("boothcue-song-" + juce::String (juce::Random::getSystemRandom().nextInt (1 << 30)));
+        folder.createDirectory();
+        const auto lyrics = folder.getChildFile ("lyrics.txt"), chords = folder.getChildFile ("chords.txt"),
+                   timings = folder.getChildFile ("timings.txt");
+        const juce::String text = "A title\n\n[Verse 1]\none\ntwo x 2\n\n# a note\n[Chorus]\nhold on\n";
+        lyrics.replaceWithText (text, false, false, "\n");
+        chords.replaceWithText ("[Verse 1]\n| Am | F | C | G |\n", false, false, "\n");
+
+        juce::MemoryBlock saved;
+        {
+            BoothCueAudioProcessor p;
+            p.linkSet (fixtures.getChildFile ("parts.als"));   // Intro 0-16, Verse 1 16-48, Chorus 48-80, ...
+            EXPECT (waitFor (p, State::ok));
+            p.linkSongFolder (folder);
+            EXPECT (p.getSong().blocks().size() == 2 && p.getSong().blocks()[0].lines.size() == 3);
+            EXPECT (p.areChordsEdited() && ! p.getSong().chords().empty());
+            EXPECT (chordName (p.getSong().chords()[static_cast<std::size_t> (p.getSong().chordAt (20.5))].chord) == "F");
+            EXPECT (p.getSongFolderStatus().contains ("lyrics and chords"));
+            p.pollSongFolder();
+            EXPECT (! timings.existsAsFile());                  // nothing tapped: no file made
+
+            // A tap is saved next to the texts; the texts themselves are never written.
+            FakePlayHead head;
+            head.info.setBpm (96.0);
+            head.info.setTimeSignature (juce::AudioPlayHead::TimeSignature { 4, 4 });
+            p.setPlayHead (&head);
+            p.prepareToPlay (48000.0, 64);
+            pump (150);
+            playAt (p, head, 24.0, false);
+            p.setTapCursor (0, 1);
+            EXPECT (p.tap());
+            p.pollSongFolder();
+            EXPECT (timings.loadFileAsString().contains ("@7.1.1 two"));
+            EXPECT (lyrics.loadFileAsString() == text);
+
+            // The songbook's text is edited: followed, and the tap stays on its line.
+            lyrics.replaceWithText (text.replace ("one\n", "one, changed\n") + "again\n", false, false, "\n");
+            p.pollSongFolder();   // sees the change
+            p.pollSongFolder();   // it held still: read
+            EXPECT (p.getSong().blocks()[0].lines[0].text == "one, changed");
+            EXPECT (p.getSong().blocks()[0].lines[1].timed() && p.getSong().blocks()[1].lines.size() == 2);
+            chords.replaceWithText ("[Verse 1]\n| Dm | F | C | G |\n", false, false, "\n");
+            p.pollSongFolder();
+            p.pollSongFolder();
+            EXPECT (chordName (p.getSong().chords()[static_cast<std::size_t> (p.getSong().chordAt (16.5))].chord) == "Dm");
+            saved = stateOf (p);
+        }
+
+        // Saved with the set; a new instance without any state takes the starts from the folder.
+        {
+            BoothCueAudioProcessor q;
+            q.setStateInformation (saved.getData(), static_cast<int> (saved.getSize()));
+            EXPECT (q.getSongFolder() == folder && q.getSong().blocks()[0].lines[1].timed());
+        }
+        {
+            BoothCueAudioProcessor fresh;
+            fresh.linkSet (fixtures.getChildFile ("parts.als"));
+            EXPECT (waitFor (fresh, State::ok));
+            fresh.linkSongFolder (folder);
+            const auto& line = fresh.getSong().blocks()[0].lines[1];
+            EXPECT (line.text == "two" && (line.timed() || line.hasAt));
+            EXPECT (std::abs (fresh.getSong().resolvedOffset (0, 1) - 8.0) < 1e-9);   // bar 7 = 8 beats into Verse 1
+            fresh.unlinkSongFolder();
+            EXPECT (fresh.getSongFolder() == juce::File() && ! fresh.getSong().blocks().empty());
+
+            // A folder that is gone: said, and what is shown stays.
+            fresh.linkSongFolder (folder.getChildFile ("nope"));
+            EXPECT (fresh.getSongFolderStatus().contains ("not found") && ! fresh.getSong().blocks().empty());
+        }
+        folder.deleteRecursively();
+    }
+
     void tapTests (const juce::File& fixtures)
     {
         BoothCueAudioProcessor p;
@@ -783,6 +859,7 @@ int main (int argc, char** argv)
         const auto fixtures = juce::File::getCurrentWorkingDirectory().getChildFile (argv[1]);
         linkTests (fixtures);
         tapTests (fixtures);
+        songFolderTests (fixtures);
         chordTests (fixtures);
         chordMidiTests();
         settingsTests();

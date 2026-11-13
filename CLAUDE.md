@@ -32,6 +32,9 @@ window. It follows the conventions of `../flashroll` and `../hitnotedmx`
 - **BoothCue never writes the `.als`.** It reads it for structure and chord
   detection; its own lyrics and chords live in the plugin state and in text /
   MIDI files the user saves.
+- **In a linked song folder BoothCue only writes `timings.txt`.** `lyrics.txt`
+  and `chords.txt` belong to the songbook (`../bovenburen_manager`) and are
+  only read (`pollSongFolder`, once a second on the message thread).
 - The core (`AlsParser`, `Chords`, `SetChords`, `Song`, `LyricImport`,
   `ChordChart`, `Prompter`, `Transport.h`) stays **plain C++ with no JUCE and
   no clock**: every query takes the position. It builds as `boothcue-core`,

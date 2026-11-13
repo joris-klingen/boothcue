@@ -127,6 +127,16 @@ namespace
         keepTimings (rep, rep2);
         EXPECT (near (rep2[0].lines[0].offset, 1) && ! rep2[0].lines[1].timed() && near (rep2[0].lines[2].offset, 2));
 
+        // Saved starts laid over a text: only lines with a start are taken, taps and "@" alike.
+        auto text = parseLyrics ("[Verse]\none\ntwo\nthree\n@9.1.1 four\n");
+        auto saved = parseLyrics ("[Verse]\n@5.1.1 one\ntwo\nthree\nfour\n");
+        saved[0].lines[2].offset = 6.0;
+        keepStarts (saved, text);
+        EXPECT (text[0].lines[0].hasAt && text[0].lines[0].atBar == 5 && text[0].lines[0].text == "one");
+        EXPECT (! text[0].lines[1].timed() && ! text[0].lines[1].hasAt);
+        EXPECT (near (text[0].lines[2].offset, 6.0));
+        EXPECT (text[0].lines[3].hasAt && text[0].lines[3].atBar == 9);   // no saved start: its own stays
+
         EXPECT (sectionKind ("Intro") == SectionKind::intro && sectionKind ("Verse 2") == SectionKind::verse);
         EXPECT (sectionKind ("Pre-Chorus") == SectionKind::prechorus && sectionKind ("pre") == SectionKind::prechorus);
         EXPECT (sectionKind ("Chorus 3") == SectionKind::chorus && sectionKind ("Refrein") == SectionKind::chorus);

@@ -63,4 +63,9 @@ std::string lyricsToTimedText (const Song&);
 // subsequence), so inserting or removing a line doesn't lose the other taps.
 void keepTimings (const std::vector<LyricBlock>& previous, std::vector<LyricBlock>& edited);
 
+// The same pairing, for laying saved starts over a text: a line takes the
+// start of its partner in `previous` (tapped, or given as "@bar.beat") only
+// when that one has a start; every other line keeps what it had.
+void keepStarts (const std::vector<LyricBlock>& previous, std::vector<LyricBlock>& edited);
+
 }  // namespace boothcue

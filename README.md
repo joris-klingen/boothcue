@@ -132,6 +132,24 @@ chord names in the clip). Clicking it saves the `.mid` instead. Dropping a
 `.mid` on the plugin window reads chords from it: by the chord names if it
 has them, else detected from its notes.
 
+### The song folder (the band's songbook)
+
+*Link song...* (or dropping a folder on the plugin window) links the song's
+folder in the songbook kept by
+[bovenburen_manager](https://github.com/joris-klingen/bovenburen_manager):
+
+- `lyrics.txt` and `chords.txt` in it are shown, and followed when they change
+  (within a second or two): edit the song on a phone and the singer display has
+  it. BoothCue never writes these two files; the songbook is their master.
+- The starts you tap are written next to them as `timings.txt` (the timed
+  lyrics, as *Save...* writes them). When the text changes, every unchanged line
+  keeps its start; a new BoothCue on another set of the same song takes the
+  starts from that file.
+- A chart from the folder counts as edited chords: detection no longer replaces
+  it. Without a `chords.txt` the detected chords stay.
+
+The link is saved with the set. *Unlink song* stops following; what is shown stays.
+
 ### Settings
 
 | Setting | Options |

@@ -30,6 +30,12 @@ with non-trivial commits. The plan and open backlog are in [TODO.md](TODO.md).
 
 ## Changelog
 
+- **Song folder** (after v0.1.0): *Link song...* follows `lyrics.txt` and
+  `chords.txt` of a song's folder in the songbook (bovenburen_manager) and
+  writes the tapped starts next to them as `timings.txt`; saved with the set.
+  `keepStarts` in `LyricImport` lays saved starts over a text. Checked in
+  `song-check` and `plugin-smoke` on Linux; not yet tried in Live.
+
 - **after v0.1.0** (review fixes):
   - `.als` reader: a file that ends inside the track list is a failed read
     (it used to come back as the 2nd track, or with tracks missing); numbers
