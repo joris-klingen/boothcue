@@ -10,7 +10,8 @@ namespace boothcue
 // The settings window inside Live (the singer looks at the separate display).
 //
 //   left   the linked Live set, the singer display (open, toggles, text size,
-//          count-in), and a transport readout to check the host connection
+//          count-in), Phones... (a QR code for the band's phones to open the
+//          songbook page), and a transport readout to check the host connection
 //   right  two tabs, BoothCue's own database for the song (it never writes
 //          to the Live set):
 //          Lyrics - the text (paste, load, save with timings) and the line list:
@@ -131,6 +132,7 @@ private:
 
     // ---- left: display ----
     juce::TextButton displayButton;
+    juce::TextButton phonesButton { "Phones..." };   // the songbook page as a QR code (PhonesPanel)
     juce::ToggleButton showPart   { "Song part" };
     juce::ToggleButton showLyrics { "Lyrics" };
     juce::ToggleButton showChords { "Chords" };

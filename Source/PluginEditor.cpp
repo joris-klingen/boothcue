@@ -3,6 +3,7 @@
 #include "ChordChart.h"
 #include "ChordMidi.h"
 #include "LyricImport.h"
+#include "PhonesPanel.h"
 #include "Song.h"
 #include "Theme.h"
 
@@ -201,6 +202,14 @@ BoothCueAudioProcessorEditor::BoothCueAudioProcessorEditor (BoothCueAudioProcess
         timerCallback();
     };
     addAndMakeVisible (displayButton);
+
+    phonesButton.onClick = [this]
+    {
+        juce::CallOutBox::launchAsynchronously (std::make_unique<PhonesPanel>(), phonesButton.getBounds(), this);
+    };
+    phonesButton.setTooltip ("Show a QR code for the band's phones: it opens the songbook page from the "
+                             "Bovenburen manager on this Mac (started with phone access, --lan).");
+    addAndMakeVisible (phonesButton);
 
     for (auto* t : { &showPart, &showLyrics, &showChords, &showBass })
     {
@@ -888,7 +897,12 @@ void BoothCueAudioProcessorEditor::resized()
     songArea = left.removeFromTop (42).withTrimmedTop (6);
 
     left.removeFromTop (22);   // "Singer display"
-    displayButton.setBounds (left.removeFromTop (30).removeFromLeft (220));
+    {
+        auto row = left.removeFromTop (30);
+        displayButton.setBounds (row.removeFromLeft (220));
+        row.removeFromLeft (8);
+        phonesButton.setBounds (row);
+    }
     left.removeFromTop (8);
     auto toggles = left.removeFromTop (48);
     auto toggleLeft = toggles.removeFromLeft (toggles.getWidth() / 2 - 20);

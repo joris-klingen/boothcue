@@ -77,6 +77,11 @@ plug-ins in Live (Settings > Plug-Ins).
    each line. The tap lands on the playhead at that moment, minus the tap
    latency and snapped to the grid you chose. Backspace in the display undoes
    the last tap.
+7. **Phones for the band** (optional): *Phones...* shows a QR code for the
+   songbook page of the [Bovenburen manager](https://github.com/joris-klingen/bovenburen_manager)
+   running on this Mac with phone access (`--lan`). Scanning it on the same
+   Wi-Fi opens the lyrics and chords; the phone is remembered after that.
+   The QR encoder is BoothCue's own (`Source/QrCode.{h,cpp}`, plain C++).
 
 ![The editor, Lyrics tab](docs/editor.png)
 

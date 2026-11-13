@@ -25,6 +25,7 @@ add_library(boothcue-core STATIC
     Source/Chords.cpp
     Source/SetChords.cpp
     Source/ChordChart.cpp
+    Source/QrCode.cpp
 )
 target_include_directories(boothcue-core PUBLIC Source)
 target_link_libraries(boothcue-core PUBLIC ZLIB::ZLIB)
@@ -77,6 +78,7 @@ if(BOOTHCUE_BUILD_PLUGIN)
     endif()
 
     target_sources(BoothCue PRIVATE
+        Source/PhonesPanel.cpp
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
         Source/PrompterPainter.cpp
@@ -166,6 +168,11 @@ endif()
 add_executable(als-check tools/AlsCheck.cpp)
 target_link_libraries(als-check PRIVATE boothcue-core)
 
+# qr-check: the QR encoder, read back by a decoder written from the standard
+# (format / version BCH, zig-zag, Reed-Solomon syndromes, byte mode).
+add_executable(qr-check tools/QrCheck.cpp)
+target_link_libraries(qr-check PRIVATE boothcue-core)
+
 # song-check: lyric import and linking, cue placement, count-in, bar/beat, loop
 # passes, tap / nudge, the transport hand-off. No JUCE, no clock.
 add_executable(song-check tools/SongCheck.cpp)
@@ -181,6 +188,7 @@ target_link_libraries(chord-check PRIVATE boothcue-core)
 enable_testing()
 add_test(NAME als-parser COMMAND als-check "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
 add_test(NAME chord-detect COMMAND chord-check)
+add_test(NAME qr-code COMMAND qr-check)
 add_test(NAME song-logic COMMAND song-check "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/lyrics")
 if(BOOTHCUE_BUILD_PLUGIN)
     add_test(NAME prompter-render

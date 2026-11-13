@@ -16,6 +16,7 @@
 
 #include "ChordMidi.h"
 #include "LyricImport.h"
+#include "PhonesPanel.h"
 #include "PluginProcessor.h"
 
 #include <cmath>
@@ -731,6 +732,31 @@ namespace
         snapshot (file.getSiblingFile (file.getFileNameWithoutExtension() + "-chords.png"));
     }
 
+    // The Phones panel: a QR code for a manager address, round trip through the
+    // encoder; with BOOTHCUE_EDITOR_PNG set, a snapshot next to the editor's.
+    void phonesTests()
+    {
+        const juce::String address ("http://192.168.1.20:8770/?key=AbCdEfGhIjKl");
+        const auto code = PhonesPanel::encode (address);
+        EXPECT (code.size() >= 21 && code.size() <= 41 && code.front().size() == code.size());
+        EXPECT (code[0][0] && code[0][6] && ! code[0][7]);   // the top-left finder pattern
+        EXPECT (PhonesPanel::encode ({}).empty());
+        EXPECT (PhonesPanel::encode (juce::String::repeatedString ("x", 5000)).empty());
+
+        PhonesPanel panel (address);
+        EXPECT (panel.getAddress() == address);
+        const auto out = juce::SystemStats::getEnvironmentVariable ("BOOTHCUE_EDITOR_PNG", {});
+        if (out.isNotEmpty())
+        {
+            const juce::File file (juce::File (out).getSiblingFile (juce::File (out).getFileNameWithoutExtension() + "-phones.png"));
+            const auto image = panel.createComponentSnapshot (panel.getLocalBounds(), true, 2.0f);
+            file.deleteFile();
+            juce::FileOutputStream stream (file);
+            juce::PNGImageFormat png;
+            EXPECT (stream.openedOk() && png.writeImageToStream (image, stream));
+        }
+    }
+
     void run()
     {
         auto processor = std::make_unique<BoothCueAudioProcessor>();
@@ -864,6 +890,7 @@ int main (int argc, char** argv)
         chordMidiTests();
         settingsTests();
         editorSnapshot (fixtures);
+        phonesTests();
     }
     else
         std::printf ("plugin-smoke: no fixtures dir given, skipping the link checks\n");
