@@ -28,6 +28,10 @@ window. It follows the conventions of `../flashroll` and `../hitnotedmx`
   songs, kept in `~/Library/Application Support/BoothCue/library.json`; the
   tests use `BOOTHCUE_LIBRARY`) and `pairLinked` / `linkSong` in
   `PluginProcessor.cpp`; the menu is `showSongMenu` in `PluginEditor.cpp`.
+- **The detector for other programs**: `tools/ChartTool.cpp` builds
+  `boothcue-chart <set.als> [sig]` (JSON: parts + chord chart), copied into
+  `BoothCue.app/Contents/Resources`; bovenburen_manager runs it. Keep its
+  output format in step with `bovenburen/detect.py` there.
 - **What the display shows at a position**: `Source/Prompter.{h,cpp}`
   (`buildScene`); how it's drawn: `Source/PrompterPainter.{h,cpp}`; colours and
   Live's clip palette: `Source/Theme.h`.
@@ -62,7 +66,7 @@ window. It follows the conventions of `../flashroll` and `../hitnotedmx`
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j8
-ctest --test-dir build      # als-parser, chord-detect, song-logic, prompter-render, set-watcher, plugin-smoke
+ctest --test-dir build      # als-parser, chord-detect, chart-tool, song-logic, prompter-render, set-watcher, plugin-smoke
 ```
 
 On Linux the editor / display tests need a desktop session: `Xvfb :99` plus a

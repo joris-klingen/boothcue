@@ -30,6 +30,11 @@ with non-trivial commits. The plan and open backlog are in [TODO.md](TODO.md).
 
 ## Changelog
 
+- **`boothcue-chart`** (after v0.1.0): a set's parts and detected chords as JSON
+  (`tools/ChartTool.cpp`, core only), copied into `BoothCue.app/Contents/Resources`.
+  The songbook (bovenburen_manager) runs it for "chords from the Live set", so
+  there is one detector. CTest `chart-tool`.
+
 - **One choice per song** (after v0.1.0): a *Song* menu replaces *Link
   set...* / *Link song...*: recent songs, the songbook's songs, the two file
   choosers, Unlink. `SongLibrary` finds a set's song (the `project` in

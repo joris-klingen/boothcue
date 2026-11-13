@@ -68,6 +68,17 @@ if(BOOTHCUE_BUILD_PLUGIN)
     # `codesign --verify`. Run JUCE's own check once more as the last step: it
     # re-signs ad hoc only when the signature is invalid. (The optional
     # BOOTHCUE_COPY_PLUGIN copy runs before this step; install.command does not.)
+    # boothcue-chart goes into the app, so the songbook finds the detector
+    # wherever BoothCue is installed. Before the signing check below: the copy
+    # changes the bundle.
+    if(APPLE)
+        add_dependencies(BoothCue_Standalone boothcue-chart)
+        add_custom_command(TARGET BoothCue_Standalone POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:boothcue-chart>"
+                    "$<TARGET_BUNDLE_DIR:BoothCue_Standalone>/Contents/Resources/boothcue-chart"
+            VERBATIM)
+    endif()
+
     if(APPLE)
         foreach(bundle_target BoothCue_VST3 BoothCue_Standalone)
             add_custom_command(TARGET ${bundle_target} POST_BUILD
@@ -170,6 +181,11 @@ endif()
 add_executable(als-check tools/AlsCheck.cpp)
 target_link_libraries(als-check PRIVATE boothcue-core)
 
+# boothcue-chart: a set's parts and detected chords as JSON, for the songbook
+# (bovenburen_manager runs it). On the Mac it is also copied into BoothCue.app.
+add_executable(boothcue-chart tools/ChartTool.cpp)
+target_link_libraries(boothcue-chart PRIVATE boothcue-core)
+
 # qr-check: the QR encoder, read back by a decoder written from the standard
 # (format / version BCH, zig-zag, Reed-Solomon syndromes, byte mode).
 add_executable(qr-check tools/QrCheck.cpp)
@@ -191,6 +207,8 @@ enable_testing()
 add_test(NAME als-parser COMMAND als-check "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
 add_test(NAME chord-detect COMMAND chord-check)
 add_test(NAME qr-code COMMAND qr-check)
+add_test(NAME chart-tool COMMAND boothcue-chart "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/notes.als")
+set_tests_properties(chart-tool PROPERTIES PASS_REGULAR_EXPRESSION "\"parts\": \\[\\{\"name\".*\"chart\": \"# BoothCue chords")
 add_test(NAME song-logic COMMAND song-check "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/lyrics")
 if(BOOTHCUE_BUILD_PLUGIN)
     add_test(NAME prompter-render
