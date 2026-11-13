@@ -211,6 +211,16 @@ BoothCueAudioProcessorEditor::BoothCueAudioProcessorEditor (BoothCueAudioProcess
         timerCallback();
     };
     addAndMakeVisible (displayButton);
+    displayButton.setTooltip ("The singer display in a window of its own, for the singer's screen (a second monitor, "
+                              "or an iPad: move the window there, or use Window > Move to iPad). F = full screen.");
+    preview.setEmbedded ([this]
+    {
+        if (! processor.isDisplayVisible())
+            processor.showDisplay();
+        timerCallback();
+    });
+    preview.setTooltip ("What the singer sees. Double-click to open it in a window of its own.");
+    addAndMakeVisible (preview);
 
     phonesButton.onClick = [this]
     {
@@ -400,7 +410,7 @@ BoothCueAudioProcessorEditor::BoothCueAudioProcessorEditor (BoothCueAudioProcess
     if (saved.x >= 860 && saved.y >= 700)
         setSize (saved.x, saved.y);
     else
-        setSize (1040, 720);
+        setSize (1040, 860);
     startTimerHz (30);
     timerCallback();
 }
@@ -1069,7 +1079,10 @@ void BoothCueAudioProcessorEditor::resized()
 
     readoutArea = left;
 
-    // Right column: the tabs, then the lyrics (text over the line list) or the chord chart.
+    // Right column: the singer display (a third of the height), the tabs, then the
+    // lyrics (text over the line list) or the chord chart.
+    preview.setBounds (area.removeFromTop (juce::jlimit (150, 320, area.getHeight() * 32 / 100)));
+    area.removeFromTop (12);
     tabRow = area.removeFromTop (30);
     {
         auto row = tabRow;
@@ -1118,7 +1131,7 @@ void BoothCueAudioProcessorEditor::resized()
     }
     noteRow = area.removeFromTop (24).withTrimmedTop (4);
 
-    lyricsEditor.setBounds (area.removeFromTop (juce::jmax (160, area.getHeight() * 2 / 5)));
+    lyricsEditor.setBounds (area.removeFromTop (juce::jmax (110, area.getHeight() * 2 / 5)));
     area.removeFromTop (10);
     linesTitle = area.removeFromTop (24);
     area.removeFromTop (4);

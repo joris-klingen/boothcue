@@ -16,6 +16,7 @@ class BoothCueAudioProcessor;
 //   F or double-click: full screen on / off      Esc: leave full screen
 //   T or space: tap the next line            Backspace: undo the last tap
 class PrompterView final : public juce::Component,
+                           public juce::SettableTooltipClient,
                            private juce::Timer
 {
 public:
@@ -27,6 +28,11 @@ public:
     void mouseDoubleClick (const juce::MouseEvent&) override;
 
     std::function<void()> onTap, onUndo;
+
+    // The same view inside the plugin window, to see what the singer sees:
+    // it takes no keys, and a double-click calls onOpen (the editor opens the
+    // singer display's own window with it) instead of going full screen.
+    void setEmbedded (std::function<void()> onOpen);
 
 private:
     void timerCallback() override;
@@ -49,6 +55,8 @@ private:
     PrompterScene scene;
     Shown shown;
     bool first = true;
+    bool embedded = false;
+    std::function<void()> onOpenWindow;
     juce::String titleTrack { "\x01" };   // never a real name: forces the first title update
 };
 

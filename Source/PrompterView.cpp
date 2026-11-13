@@ -91,8 +91,17 @@ void PrompterView::paint (juce::Graphics& g)
     painter.paint (g, getLocalBounds(), scene, processor.getSong(), processor.getDisplaySettings());
 }
 
+void PrompterView::setEmbedded (std::function<void()> onOpen)
+{
+    embedded = true;
+    onOpenWindow = std::move (onOpen);
+    setWantsKeyboardFocus (false);
+}
+
 bool PrompterView::keyPressed (const juce::KeyPress& key)
 {
+    if (embedded)
+        return false;
     if (key.getTextCharacter() == 'f' || key.getTextCharacter() == 'F')
     {
         toggleFullScreen();
@@ -121,6 +130,12 @@ bool PrompterView::keyPressed (const juce::KeyPress& key)
 
 void PrompterView::mouseDoubleClick (const juce::MouseEvent&)
 {
+    if (embedded)
+    {
+        if (onOpenWindow)
+            onOpenWindow();
+        return;
+    }
     toggleFullScreen();
 }
 

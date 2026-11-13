@@ -118,11 +118,11 @@ public:
     // ---- one choice per song (message thread) --------------------------------------
     // The set and the song folder belong together, and the library knows how:
     // linking a set also links its song's folder in the songbook, linking a
-    // song folder also links the newest set of its Live project. What was
+    // song folder also links the latest version of its Live project. What was
     // linked last is remembered for every set (SongLibrary).
     const SongLibrary& getLibrary() const noexcept                      { return library; }
     void setSongbookFolder (const juce::File&);
-    void linkSong (const LibrarySong&);        // its folder, and its newest set when that can be found
+    void linkSong (const LibrarySong&);        // its folder, and its latest version when that can be found
     void linkRecent (const SongLibrary::Recent&);
     void unlinkSong();                         // the set and the song folder
     juce::String getSongTitle() const;         // the linked song's title, else the set's name; "" = nothing linked

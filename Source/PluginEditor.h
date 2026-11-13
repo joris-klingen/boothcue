@@ -3,6 +3,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "PluginProcessor.h"
+#include "PrompterView.h"
 
 namespace boothcue
 {
@@ -166,6 +167,11 @@ private:
     juce::TextButton clearAllButton { "Clear all" };
     bool syncingSelection = false;
     bool dropHover = false;
+
+    // ---- right: the singer display, live, above the tabs ----
+    // What the singer sees, in the plugin window (the separate window is for
+    // the singer's own screen: a second monitor, an iPad over Sidecar).
+    PrompterView preview { processor };
 
     // ---- right: tabs ----
     juce::TextButton lyricsTab { "Lyrics" }, chordsTab { "Chords" };

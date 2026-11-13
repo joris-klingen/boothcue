@@ -103,7 +103,7 @@ namespace
         keepTimings (old, edited);
         EXPECT (! edited[0].lines[0].timed());
         EXPECT (near (edited[1].lines[0].offset, 1.0));   // header matched case-insensitively
-        EXPECT (! edited[1].lines[1].timed());            // text changed
+        EXPECT (near (edited[1].lines[1].offset, 2.0));   // reworded between two lines that stayed: keeps its place
         EXPECT (near (edited[2].lines[0].offset, 3.0));
         EXPECT (! edited[3].lines[0].timed());            // 2nd [Chorus] block matched with the 2nd, not the 1st
         EXPECT (near (edited[3].lines[1].offset, 4.0));
@@ -126,6 +126,15 @@ namespace
         auto rep2 = parseLyrics ("[C]\nla\nx\nla\n");
         keepTimings (rep, rep2);
         EXPECT (near (rep2[0].lines[0].offset, 1) && ! rep2[0].lines[1].timed() && near (rep2[0].lines[2].offset, 2));
+
+        // The songbook's text tidied up (capitals, commas, a pickup dropped, "Verse 1" -> "Verse"):
+        // every start stays.
+        auto tapped = parseLyrics ("[Verse 1]\nPapa heeft het voor elkaar,\nlachend op de foto\n(Hij is) Best tevreden samen\n[Pre]\nx\n[Verse 2]\ny\n");
+        tapped[0].lines[0].offset = 0; tapped[0].lines[1].offset = 4; tapped[0].lines[2].offset = 8; tapped[2].lines[0].offset = 2;
+        auto tidy = parseLyrics ("[Verse]\nPapa heeft het voor elkaar\nLachend op de foto\nBest tevreden samen\n[Pre]\nx\n[Verse 2]\ny\n");
+        keepTimings (tapped, tidy);
+        EXPECT (near (tidy[0].lines[0].offset, 0) && near (tidy[0].lines[1].offset, 4) && near (tidy[0].lines[2].offset, 8));
+        EXPECT (near (tidy[2].lines[0].offset, 2) && tidy[0].lines[2].text == "Best tevreden samen");
 
         // Saved starts laid over a text: only lines with a start are taken, taps and "@" alike.
         auto text = parseLyrics ("[Verse]\none\ntwo\nthree\n@9.1.1 four\n");

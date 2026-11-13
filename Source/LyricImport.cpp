@@ -514,38 +514,104 @@ void keepStarts (const std::vector<LyricBlock>& previous, std::vector<LyricBlock
 
 namespace
 {
+// A line as it is sung, for telling whether two texts are the same line: only
+// its letters and digits, in lower case ("Lachend op de foto," = "lachend op
+// de foto").
+std::string sungKey (const std::string& text)
+{
+    std::string out;
+    for (const char ch : text)
+    {
+        const auto c = static_cast<unsigned char> (ch);
+        if (c >= 0x80 || std::isalnum (c))
+            out += static_cast<char> (c < 0x80 ? std::tolower (c) : c);
+    }
+    return out;
+}
+
+// The header without its number: "Verse 1" and "Verse" are both "verse".
+std::string baseKey (const std::string& header)
+{
+    auto key = nameKey (header);
+    while (! key.empty() && std::isdigit (static_cast<unsigned char> (key.back())))
+        key.pop_back();
+    return key;
+}
+
+template <typename Take>
+void pairBlock (const LyricBlock& previous, LyricBlock& edited, Take take)
+{
+    // Pair the lines up by the longest common subsequence of their texts (as
+    // sung: a comma or a capital more or less is the same line), so
+    // inserting, deleting or changing one line keeps the timing of every
+    // other line (and the order of the taps).
+    auto& lines = edited.lines;
+    const auto& old = previous.lines;
+    const auto a = old.size(), b = lines.size();
+    std::vector<std::string> oldKeys, newKeys;
+    for (const auto& l : old)   oldKeys.push_back (sungKey (l.text));
+    for (const auto& l : lines) newKeys.push_back (sungKey (l.text));
+    std::vector<std::vector<int>> lcs (a + 1, std::vector<int> (b + 1, 0));
+    for (std::size_t i = a; i-- > 0;)
+        for (std::size_t j = b; j-- > 0;)
+            lcs[i][j] = oldKeys[i] == newKeys[j] ? lcs[i + 1][j + 1] + 1
+                                                 : std::max (lcs[i + 1][j], lcs[i][j + 1]);
+    // Between two lines that pair up: as many old lines as new ones means
+    // those were reworded, not added or removed, and keep their place.
+    std::size_t i = 0, j = 0, gapI = 0, gapJ = 0;
+    auto closeGap = [&] (std::size_t endI, std::size_t endJ)
+    {
+        if (endI - gapI == endJ - gapJ)
+            for (std::size_t k = 0; k < endI - gapI; ++k)
+                take (old[gapI + k], lines[gapJ + k]);
+    };
+    while (i < a && j < b)
+    {
+        if (oldKeys[i] == newKeys[j])
+        {
+            closeGap (i, j);
+            take (old[i], lines[j]);
+            ++i;
+            ++j;
+            gapI = i;
+            gapJ = j;
+        }
+        else if (lcs[i + 1][j] >= lcs[i][j + 1]) ++i;
+        else                                     ++j;
+    }
+    closeGap (a, b);
+}
+
 template <typename Take>
 void pairLines (const std::vector<LyricBlock>& previous, std::vector<LyricBlock>& edited, Take take)
 {
     const auto oldIds = occurrences (previous);
     const auto newIds = occurrences (edited);
+    std::vector<bool> oldUsed (previous.size(), false), newUsed (edited.size(), false);
 
     for (std::size_t n = 0; n < edited.size(); ++n)
         for (std::size_t o = 0; o < previous.size(); ++o)
-        {
-            if (oldIds[o] != newIds[n])
-                continue;
-
-            // Pair the lines up by the longest common subsequence of their
-            // texts, so inserting, deleting or changing one line keeps the
-            // timing of every other line (and the order of the taps).
-            auto& lines = edited[n].lines;
-            const auto& old = previous[o].lines;
-            const auto a = old.size(), b = lines.size();
-            std::vector<std::vector<int>> lcs (a + 1, std::vector<int> (b + 1, 0));
-            for (std::size_t i = a; i-- > 0;)
-                for (std::size_t j = b; j-- > 0;)
-                    lcs[i][j] = old[i].text == lines[j].text ? lcs[i + 1][j + 1] + 1
-                                                             : std::max (lcs[i + 1][j], lcs[i][j + 1]);
-            std::size_t i = 0, j = 0;
-            while (i < a && j < b)
+            if (! oldUsed[o] && oldIds[o] == newIds[n])
             {
-                if (old[i].text == lines[j].text)       { take (old[i], lines[j]); ++i; ++j; }
-                else if (lcs[i + 1][j] >= lcs[i][j + 1]) ++i;
-                else                                     ++j;
+                oldUsed[o] = newUsed[n] = true;
+                pairBlock (previous[o], edited[n], take);
+                break;
             }
-            break;
-        }
+
+    // A header that got or lost its number ("Verse 1" -> "Verse"): the blocks
+    // of that kind left over pair up in order.
+    for (std::size_t n = 0; n < edited.size(); ++n)
+    {
+        if (newUsed[n] || baseKey (edited[n].header).empty())
+            continue;
+        for (std::size_t o = 0; o < previous.size(); ++o)
+            if (! oldUsed[o] && baseKey (previous[o].header) == baseKey (edited[n].header))
+            {
+                oldUsed[o] = newUsed[n] = true;
+                pairBlock (previous[o], edited[n], take);
+                break;
+            }
+    }
 }
 
 }  // namespace

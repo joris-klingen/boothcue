@@ -1,6 +1,8 @@
 #include "SongLibrary.h"
 
 #include <algorithm>
+#include <cctype>
+#include <tuple>
 
 namespace boothcue
 {
@@ -173,14 +175,8 @@ juce::File SongLibrary::setForSong (const LibrarySong& song) const
     if (juce::File::isAbsolutePath (song.project) && song.project.endsWithIgnoreCase (".als"))
         return juce::File (song.project).existsAsFile() ? juce::File (song.project) : juce::File();
 
-    if (juce::File::isAbsolutePath (song.project))   // a project folder by its full path: its newest set
-    {
-        juce::File newest;
-        for (const auto& entry : juce::RangedDirectoryIterator (juce::File (song.project), false, "*.als", juce::File::findFiles))
-            if (newest == juce::File() || entry.getFile().getLastModificationTime() > newest.getLastModificationTime())
-                newest = entry.getFile();
-        return newest;
-    }
+    if (juce::File::isAbsolutePath (song.project))   // a project folder by its full path: its latest version
+        return latestSet (juce::File (song.project));
 
     const auto root = projectsRoot();
     if (root == juce::File())
@@ -197,11 +193,46 @@ juce::File SongLibrary::setForSong (const LibrarySong& song) const
     if (! project.isDirectory())
         return {};
 
-    juce::File newest;
+    return latestSet (project);
+}
+
+// "papa is even weg 3.3 (test)" -> 3.3 as { 3, 3 }; no such number: { -1, -1 }.
+static std::pair<int, int> versionOf (const juce::String& name)
+{
+    std::pair<int, int> found { -1, -1 };
+    const auto s = name.toStdString();
+    for (std::size_t i = 0; i < s.size();)
+    {
+        if (! std::isdigit (static_cast<unsigned char> (s[i]))) { ++i; continue; }
+        std::size_t a = i;
+        while (i < s.size() && std::isdigit (static_cast<unsigned char> (s[i]))) ++i;
+        if (i + 1 < s.size() && s[i] == '.' && std::isdigit (static_cast<unsigned char> (s[i + 1])))
+        {
+            std::size_t b = i + 1, e = b;
+            while (e < s.size() && std::isdigit (static_cast<unsigned char> (s[e]))) ++e;
+            if (i - a <= 6 && e - b <= 6)
+                found = { std::stoi (s.substr (a, i - a)), std::stoi (s.substr (b, e - b)) };
+            i = b;   // "3.3.1": the last pair counts, as in the songbook
+        }
+    }
+    return found;
+}
+
+juce::File SongLibrary::latestSet (const juce::File& project)
+{
+    // By the number in the name, not by the save time: opening an old version
+    // and saving it does not make it the latest. The same number twice: the
+    // plain name first ("3.3" before "3.3 (test)"); no number: last, newest save first.
+    juce::File best;
+    auto key = [] (const juce::File& f)
+    {
+        const auto v = versionOf (f.getFileNameWithoutExtension());
+        return std::make_tuple (v.first >= 0, v, -f.getFileName().length(), f.getLastModificationTime().toMilliseconds());
+    };
     for (const auto& entry : juce::RangedDirectoryIterator (project, false, "*.als", juce::File::findFiles))
-        if (newest == juce::File() || entry.getFile().getLastModificationTime() > newest.getLastModificationTime())
-            newest = entry.getFile();
-    return newest;
+        if (best == juce::File() || key (entry.getFile()) > key (best))
+            best = entry.getFile();
+    return best;
 }
 
 void SongLibrary::learn (const juce::File& set, const juce::File& songFolder)

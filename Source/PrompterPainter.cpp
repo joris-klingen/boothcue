@@ -254,22 +254,19 @@ void PrompterPainter::paintTimeline (juce::Graphics& g, juce::Rectangle<float> a
         }
     }
 
-    // The host's loop / punch range: a bracket over the strip, orange when on.
+    // The host's loop range: a thin line under the strip from its start to its
+    // end, with a small tick at both ends. Orange while Live is looping, faint
+    // when the range is only set.
     if (s.loopShown)
     {
         const float x0 = xFor (s.loopStart, area, s);
-        const float x1 = xFor (s.loopEnd, area, s);
-        const auto range = juce::Rectangle<float> (x0, area.getY() - 1.2f * unit, juce::jmax (2.0f, x1 - x0),
-                                                   area.getHeight() + 2.4f * unit);
-        const auto c = s.looping ? theme::loop : theme::faint;
-        g.setColour (c.withAlpha (s.looping ? 0.16f : 0.25f));
-        g.fillRect (range);
-        g.setColour (c);
-        const float t = juce::jmax (2.0f, 0.4f * unit);
-        g.fillRect (range.withHeight (t));
-        g.fillRect (range.withY (range.getBottom() - t).withHeight (t));
-        g.fillRect (range.withWidth (t));
-        g.fillRect (range.withX (range.getRight() - t).withWidth (t));
+        const float x1 = juce::jmax (x0 + 2.0f, xFor (s.loopEnd, area, s));
+        const float t = juce::jmax (1.5f, 0.28f * unit);
+        const float y = area.getBottom() + 0.55f * unit;
+        g.setColour (s.looping ? theme::loop : theme::dim.withAlpha (0.45f));
+        g.fillRect (juce::Rectangle<float> (x0, y, x1 - x0, t));
+        g.fillRect (juce::Rectangle<float> (x0, y - 0.7f * unit, t, 0.7f * unit + t));
+        g.fillRect (juce::Rectangle<float> (x1 - t, y - 0.7f * unit, t, 0.7f * unit + t));
     }
 
     if (s.hasPosition)
@@ -619,10 +616,10 @@ void PrompterPainter::paintTicker (juce::Graphics& g, juce::Rectangle<float> are
         }
     }
 
-    // The host loop along the top.
+    // The host loop along the top: orange while Live is looping, faint otherwise.
     if (s.loopShown && s.loopEnd > left && s.loopStart < right)
     {
-        g.setColour (s.looping ? theme::loop : theme::faint);
+        g.setColour (s.looping ? theme::loop : theme::dim.withAlpha (0.35f));
         g.fillRect (juce::Rectangle<float> (x (std::max (s.loopStart, left)), area.getY(),
                                             x (std::min (s.loopEnd, right)) - x (std::max (s.loopStart, left)), 0.45f * unit));
     }

@@ -30,6 +30,19 @@ with non-trivial commits. The plan and open backlog are in [TODO.md](TODO.md).
 
 ## Changelog
 
+- **After v0.1.0, continued:**
+  - the singer display is also shown live in the plugin window (above the
+    tabs; double-click opens the separate window for the singer's screen);
+  - the latest version of a song's set is the highest number in the file
+    name (`3.10` after `3.9`), not the newest save (`SongLibrary::latestSet`,
+    the songbook's rule);
+  - starts survive a tidied-up text: lines pair up by their letters (a comma
+    or capital more or less), reworded lines between unchanged ones keep
+    their place, and a header that got or lost its number pairs with the
+    next block of its kind (`pairLines` in `LyricImport.cpp`);
+  - the loop range is a thin line under the parts strip (orange while Live
+    loops, faint when only set), no longer a box.
+
 - **The songbook is where a linked song is edited** (after v0.1.0): with a
   song folder linked the Lyrics and Chords boxes are read-only and *Edit in
   songbook* opens the song's page in bovenburen_manager. A chart is read as

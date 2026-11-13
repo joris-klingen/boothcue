@@ -283,8 +283,14 @@ namespace
         const auto dagenSet = dagenProject.getChildFile ("dertig 1.0.als");
         for (const auto& f : { old, newest, dagenSet })
             fixtures.getChildFile ("parts.als").copyFileTo (f);
-        old.setLastModificationTime (juce::Time::getCurrentTime() - juce::RelativeTime::hours (2));
-        newest.setLastModificationTime (juce::Time::getCurrentTime());
+        // The latest version is the highest number in the name: 3.2 here is the file saved last.
+        newest.setLastModificationTime (juce::Time::getCurrentTime() - juce::RelativeTime::hours (2));
+        old.setLastModificationTime (juce::Time::getCurrentTime());
+        base.getChildFile ("numbers").createDirectory();
+        for (const auto* n : { "papa 3.10.als", "papa 3.9.als", "papa 3.10 (test).als", "outro.als" })
+            fixtures.getChildFile ("parts.als").copyFileTo (base.getChildFile ("numbers").getChildFile (n));
+        EXPECT (SongLibrary::latestSet (base.getChildFile ("numbers")).getFileName() == "papa 3.10.als");
+        EXPECT (SongLibrary::latestSet (base.getChildFile ("nothing")) == juce::File());
 
         EXPECT (SongLibrary::slug ("Papa is even weg!") == "papa-is-even-weg" && SongLibrary::slug ("  30 Dagen ") == "30-dagen");
 

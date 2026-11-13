@@ -71,7 +71,7 @@ plug-ins in Live (Settings > Plug-Ins).
 3. **Choose the song**: the button under *Song* lists the songs linked last
    and the songs of the songbook. One pick links both halves: the Live set
    (parts and chords) and the song's folder in the songbook (lyrics, chords,
-   your tapped starts). Pick a song and its newest `.als` is linked; pick a
+   your tapped starts). Pick a song and the latest version of its set is linked (the highest number in the name); pick a
    set (*Other Live set...*) and its song is found. Without a songbook, just
    pick the `.als` (or drop it on the
    plugin window). Save the set in Live and BoothCue picks up the change
@@ -79,7 +79,9 @@ plug-ins in Live (Settings > Plug-Ins).
 4. **Paste the lyrics** in the Lyrics tab (or *Load...* a `.txt`) and press
    *Apply*. Each block links to the parts with the same name; the line list
    below shows where every block is sung and what didn't link.
-5. **Open the singer display** and move it to the singer's screen. Press
+5. **The singer display** is shown live at the top of the plugin window, so
+   you see what the singer sees. **Open the singer display** (or double-click
+   that view) for a window of its own and move it to the singer's screen. Press
    **F** (or double-click) for full screen, **Esc** to leave it. For an iPad,
    use it as a second display (Sidecar, or a display app) and put the window
    there.

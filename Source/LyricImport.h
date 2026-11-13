@@ -57,10 +57,13 @@ std::string lyricsToText (const std::vector<LyricBlock>&);
 // (its start in the first part that sings it). parseLyrics reads it back.
 std::string lyricsToTimedText (const Song&);
 
-// After editing the text: lines that are unchanged keep the timing they had in
-// `previous`. Blocks pair up by header and by position among the blocks with
-// that header; inside a block, lines pair up by text, in order (longest common
-// subsequence), so inserting or removing a line doesn't lose the other taps.
+// After editing the text: lines keep the timing they had in `previous`. Blocks
+// pair up by header and by position among the blocks with that header (a
+// header that got or lost its number, "Verse 1" -> "Verse", pairs with the
+// next one of its kind); inside a block, lines pair up by what is sung
+// (letters only: a comma or a capital more or less is the same line), in order (longest common subsequence), so inserting or removing a
+// line doesn't lose the other taps; lines reworded between two unchanged ones
+// keep their place.
 void keepTimings (const std::vector<LyricBlock>& previous, std::vector<LyricBlock>& edited);
 
 // The same pairing, for laying saved starts over a text: a line takes the
