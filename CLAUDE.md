@@ -23,6 +23,11 @@ window. It follows the conventions of `../flashroll` and `../hitnotedmx`
   `Source/Song.{h,cpp}`.
 - **The text formats**: lyrics in `Source/LyricImport.{h,cpp}`, chord charts in
   `Source/ChordChart.{h,cpp}`, chords as MIDI in `Source/ChordMidi.{h,cpp}`.
+- **Which song is linked, and how the set and the songbook folder find each
+  other**: `Source/SongLibrary.{h,cpp}` (songbook and projects folders, recent
+  songs, kept in `~/Library/Application Support/BoothCue/library.json`; the
+  tests use `BOOTHCUE_LIBRARY`) and `pairLinked` / `linkSong` in
+  `PluginProcessor.cpp`; the menu is `showSongMenu` in `PluginEditor.cpp`.
 - **What the display shows at a position**: `Source/Prompter.{h,cpp}`
   (`buildScene`); how it's drawn: `Source/PrompterPainter.{h,cpp}`; colours and
   Live's clip palette: `Source/Theme.h`.

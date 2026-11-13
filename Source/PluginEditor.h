@@ -120,13 +120,15 @@ private:
     juce::uint32 shownVersion = 0;
 
     // ---- left: set ----
-    juce::TextButton linkButton   { "Link set..." };
+    // One button for the song: it shows what is linked, and opens the menu of
+    // recent songs, the songbook's songs, and the file choosers.
+    juce::TextButton songMenuButton;
     juce::TextButton reloadButton { "Reload" };
-    juce::TextButton unlinkButton { "Unlink" };
-    juce::TextButton songButton       { "Link song..." };
-    juce::TextButton songUnlinkButton { "Unlink song" };
     juce::Rectangle<int> songArea;
+    void showSongMenu();
+    void updateSongMenuButton();
     void chooseSongFolder();
+    void chooseSongbook();
     std::unique_ptr<juce::FileChooser> chooser;
     juce::Rectangle<int> linkArea;
 

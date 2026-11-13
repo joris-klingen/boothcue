@@ -189,17 +189,15 @@ BoothCueAudioProcessorEditor::BoothCueAudioProcessorEditor (BoothCueAudioProcess
     : AudioProcessorEditor (p), processor (p)
 {
     // Set.
-    linkButton.onClick = [this] { chooseSet(); };
+    songMenuButton.onClick = [this] { showSongMenu(); };
+    songMenuButton.setTooltip ("Pick the song: one of the last ones, one from the songbook, or its Live set (.als). "
+                               "BoothCue links the set (the parts and chords, read again on every save) and the "
+                               "song's folder in the songbook (lyrics and chords, your tapped starts) together.");
     reloadButton.onClick = [this] { processor.reloadSet(); };
-    unlinkButton.onClick = [this] { processor.unlinkSet(); };
-    linkButton.setTooltip ("Pick this song's Live set (.als). BoothCue reads the sections from its \"parts\" "
-                           "track and reads them again every time the set is saved.");
-    songButton.onClick = [this] { chooseSongFolder(); };
-    songUnlinkButton.onClick = [this] { processor.unlinkSongFolder(); };
-    songButton.setTooltip ("Pick this song's folder in the songbook. Its lyrics.txt and chords.txt are shown and "
-                           "followed when they change; the starts you tap are saved next to them as timings.txt.");
-    for (auto* b : { &linkButton, &reloadButton, &unlinkButton, &songButton, &songUnlinkButton })
-        addAndMakeVisible (*b);
+    reloadButton.setTooltip ("Read the Live set again now");
+    addAndMakeVisible (songMenuButton);
+    addAndMakeVisible (reloadButton);
+    updateSongMenuButton();
 
     // Display.
     displayButton.onClick = [this]
@@ -547,6 +545,88 @@ void BoothCueAudioProcessorEditor::chooseSongFolder()
                           });
 }
 
+void BoothCueAudioProcessorEditor::chooseSongbook()
+{
+    const auto current = processor.getLibrary().songbookRoot();
+    const auto start = current != juce::File() ? current : juce::File::getSpecialLocation (juce::File::userHomeDirectory);
+    chooser = std::make_unique<juce::FileChooser> ("Where is the songbook? (the folder with songs/ in it)", start);
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                          [this] (const juce::FileChooser& fc)
+                          {
+                              if (const auto folder = fc.getResult(); folder.isDirectory())
+                              {
+                                  processor.setSongbookFolder (folder);
+                                  showSongMenu();   // the songs are in the menu now
+                              }
+                          });
+}
+
+void BoothCueAudioProcessorEditor::updateSongMenuButton()
+{
+    const auto title = processor.getSongTitle();
+    songMenuButton.setButtonText ((title.isEmpty() ? juce::String ("Choose a song...") : title)
+                                  + juce::String::fromUTF8 ("  \xe2\x96\xbe"));
+    reloadButton.setEnabled (processor.getLinkStatus().file != juce::File());
+}
+
+// Recent songs, the songbook's songs, then the choosers. One pick links both
+// the Live set and the song's folder wherever the library can find the other.
+void BoothCueAudioProcessorEditor::showSongMenu()
+{
+    enum { kSet = 1, kFolder, kSongbook, kUnlink, kRecent = 100, kSong = 1000 };
+    const auto& library = processor.getLibrary();
+    const auto recents = library.recents();
+    const auto songs = library.songs();
+    const auto set = processor.getLinkStatus().file;
+    const auto folder = processor.getSongFolder();
+
+    juce::PopupMenu menu;
+    if (! recents.empty())
+    {
+        menu.addSectionHeader ("Recent");
+        for (std::size_t i = 0; i < recents.size(); ++i)
+        {
+            const auto& r = recents[i];
+            auto name = r.songFolder != juce::File() ? SongLibrary::songIn (r.songFolder).title
+                                                     : r.set.getFileNameWithoutExtension();
+            if (r.songFolder != juce::File() && r.set != juce::File())
+                name << juce::String::fromUTF8 ("  \xc2\xb7  ") << r.set.getFileNameWithoutExtension();
+            const bool there = (r.set == juce::File() || r.set.existsAsFile())
+                            && (r.songFolder == juce::File() || r.songFolder.isDirectory());
+            menu.addItem (kRecent + static_cast<int> (i), there ? name : name + "  (not found)", there,
+                          r.set == set && r.songFolder == folder);
+        }
+    }
+    menu.addSectionHeader ("Songbook");
+    for (std::size_t i = 0; i < songs.size(); ++i)
+        menu.addItem (kSong + static_cast<int> (i), songs[i].title, true, songs[i].folder == folder);
+    if (songs.empty())
+        menu.addItem (kSongbook, library.songbookRoot() == juce::File() ? "Choose the songbook folder..."
+                                                                         : "No songs in it yet: choose another folder...");
+    menu.addSeparator();
+    menu.addItem (kSet, "Other Live set...");
+    menu.addItem (kFolder, "Other song folder...");
+    if (! songs.empty())
+        menu.addItem (kSongbook, "Songbook folder...");
+    menu.addSeparator();
+    menu.addItem (kUnlink, "Unlink", set != juce::File() || folder != juce::File() || ! processor.getSong().sections().empty());
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (songMenuButton)
+                                                  .withMinimumWidth (songMenuButton.getWidth()),
+                        [safe = juce::Component::SafePointer<BoothCueAudioProcessorEditor> (this), recents, songs] (int id)
+                        {
+                            if (safe == nullptr || id == 0)
+                                return;
+                            if (id == kSet)            safe->chooseSet();
+                            else if (id == kFolder)    safe->chooseSongFolder();
+                            else if (id == kSongbook)  safe->chooseSongbook();
+                            else if (id == kUnlink)    safe->processor.unlinkSong();
+                            else if (id >= kSong)      safe->processor.linkSong (songs[static_cast<std::size_t> (id - kSong)]);
+                            else if (id >= kRecent)    safe->processor.linkRecent (recents[static_cast<std::size_t> (id - kRecent)]);
+                            safe->updateSongMenuButton();
+                        });
+}
+
 juce::String BoothCueAudioProcessorEditor::linkText (juce::Colour& colour) const
 {
     using State = BoothCueAudioProcessor::LinkStatus::State;
@@ -561,8 +641,8 @@ juce::String BoothCueAudioProcessorEditor::linkText (juce::Colour& colour) const
         case State::none:
             return st.sections > 0
                        ? "Not linked." + lastRead
-                       : "No set linked. Link this song's .als: BoothCue reads the sections from its "
-                         "\"parts\" track, and again on every save.";
+                       : "No Live set linked. Choose the song above: BoothCue reads the sections from the "
+                         "set's \"parts\" track, and again on every save.";
         case State::reading:
             return "Reading " + name + "...";
         case State::missing:
@@ -907,19 +987,13 @@ void BoothCueAudioProcessorEditor::resized()
     auto left = leftColumn;
     left.removeFromTop (66);   // title
 
-    left.removeFromTop (22);   // "Live set"
-    auto links = left.removeFromTop (28);
-    linkButton.setBounds (links.removeFromLeft (110));
-    links.removeFromLeft (8);
-    reloadButton.setBounds (links.removeFromLeft (80));
-    links.removeFromLeft (8);
-    unlinkButton.setBounds (links.removeFromLeft (80));
+    left.removeFromTop (22);   // "Song"
+    auto links = left.removeFromTop (30);
+    reloadButton.setBounds (links.removeFromRight (76));
+    links.removeFromRight (8);
+    songMenuButton.setBounds (links);
     linkArea = left.removeFromTop (72).withTrimmedTop (6);
-    auto songs = left.removeFromTop (28);
-    songButton.setBounds (songs.removeFromLeft (110));
-    songs.removeFromLeft (8);
-    songUnlinkButton.setBounds (songs.removeFromLeft (100));
-    songArea = left.removeFromTop (42).withTrimmedTop (6);
+    songArea = left.removeFromTop (48).withTrimmedTop (4);
 
     left.removeFromTop (22);   // "Singer display"
     {
@@ -1025,8 +1099,6 @@ void BoothCueAudioProcessorEditor::timerCallback()
     displayButton.setButtonText (processor.isDisplayVisible() ? "Hide singer display" : "Open singer display");
     const bool linked = processor.getLinkStatus().file != juce::File();
     reloadButton.setEnabled (linked);
-    unlinkButton.setEnabled (linked || ! processor.getSong().sections().empty());
-    songUnlinkButton.setEnabled (processor.getSongFolder() != juce::File());
 
     const auto& song = processor.getSong();
     if (processor.getContentVersion() != shownVersion)
@@ -1052,6 +1124,7 @@ void BoothCueAudioProcessorEditor::timerCallback()
         lineList.repaint();
         repaint (linkArea);
         repaint (songArea);
+        updateSongMenuButton();
         repaint (linesTitle);
     }
 
@@ -1101,7 +1174,7 @@ void BoothCueAudioProcessorEditor::paint (juce::Graphics& g)
     g.drawText ("v" JucePlugin_VersionString "  -  display: F = full screen, Esc = leave it",
                 title.removeFromTop (20), juce::Justification::centredLeft);
 
-    sectionTitle (g, { leftColumn.getX(), leftColumn.getY() + 66, leftColumn.getWidth(), 18 }, "Live set");
+    sectionTitle (g, { leftColumn.getX(), leftColumn.getY() + 66, leftColumn.getWidth(), 18 }, "Song");
     sectionTitle (g, { leftColumn.getX(), songArea.getBottom(), leftColumn.getWidth(), 18 }, "Singer display");
 
     // Under the tabs: what the text box holds / where the chords come from.
@@ -1166,7 +1239,7 @@ void BoothCueAudioProcessorEditor::paint (juce::Graphics& g)
     g.drawFittedText (status, linkArea, juce::Justification::topLeft, 5, 1.0f);
     g.setColour (theme::dim);
     g.drawFittedText (processor.getSongFolder() != juce::File() ? processor.getSongFolderStatus()
-                                                                : juce::String ("No song folder linked."),
+                                                                : juce::String ("No song from the songbook linked: lyrics and chords are this set's own."),
                       songArea, juce::Justification::topLeft, 3, 1.0f);
 
     // Transport readout, to check the host connection.

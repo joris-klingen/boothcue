@@ -69,7 +69,12 @@ plug-ins in Live (Settings > Plug-Ins).
    second track and says so.
 2. **Add BoothCue** to the master track (or any track that always plays). It
    passes the audio through untouched; it only needs the playhead.
-3. **Link the set**: *Link set...* and pick the `.als` (or drop it on the
+3. **Choose the song**: the button under *Song* lists the songs linked last
+   and the songs of the songbook. One pick links both halves: the Live set
+   (parts and chords) and the song's folder in the songbook (lyrics, chords,
+   your tapped starts). Pick a song and its newest `.als` is linked; pick a
+   set (*Other Live set...*) and its song is found. Without a songbook, just
+   pick the `.als` (or drop it on the
    plugin window). Save the set in Live and BoothCue picks up the change
    within a second or two.
 4. **Paste the lyrics** in the Lyrics tab (or *Load...* a `.txt`) and press
@@ -148,7 +153,8 @@ has them, else detected from its notes.
 
 ### The song folder (the band's songbook)
 
-*Link song...* (or dropping a folder on the plugin window) links the song's
+Choosing a song from the *Song* menu (or *Other song folder...*, or dropping a
+folder on the plugin window) links the song's
 folder in the songbook kept by
 [bovenburen_manager](https://github.com/joris-klingen/bovenburen_manager):
 

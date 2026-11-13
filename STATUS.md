@@ -30,6 +30,13 @@ with non-trivial commits. The plan and open backlog are in [TODO.md](TODO.md).
 
 ## Changelog
 
+- **One choice per song** (after v0.1.0): a *Song* menu replaces *Link
+  set...* / *Link song...*: recent songs, the songbook's songs, the two file
+  choosers, Unlink. `SongLibrary` finds a set's song (the `project` in
+  `song.json`, else the project folder's name) and a song's newest set, and
+  remembers the songbook folder, the projects folder and the last ten songs
+  for every set. Checked in `plugin-smoke`; not yet tried in Live.
+
 - **Display rework** (after v0.1.0):
   - a line is shown ahead of its first word (`DisplaySettings::leadBars`,
     1 bar by default, at most half the time since the line before it; decided

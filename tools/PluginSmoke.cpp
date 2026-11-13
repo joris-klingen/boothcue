@@ -22,6 +22,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <thread>
 
 using namespace boothcue;
@@ -256,6 +257,116 @@ namespace
         juce::AudioBuffer<float> buffer (2, 64);
         juce::MidiBuffer midi;
         p.processBlock (buffer, midi);
+    }
+
+    // One choice per song: the library finds a set's song and a song's newest
+    // set, and remembers what was linked.
+    void libraryTests (const juce::File& fixtures)
+    {
+        const auto base = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                              .getChildFile ("boothcue-lib-" + juce::String (juce::Random::getSystemRandom().nextInt (1 << 30)));
+        const auto book = base.getChildFile ("book"), projects = base.getChildFile ("Bovenburen");
+        const auto papa = book.getChildFile ("songs/papa-is-even-weg"), dagen = book.getChildFile ("songs/dertig-dagen");
+        papa.createDirectory();
+        dagen.createDirectory();
+        papa.getChildFile ("song.json").replaceWithText (R"({"title": "Papa is even weg", "project": "c_opzetjes/papa Project"})");
+        papa.getChildFile ("lyrics.txt").replaceWithText ("[Verse 1]\npapa one\n");
+        dagen.getChildFile ("song.json").replaceWithText (R"({"title": "Dertig dagen"})");
+        dagen.getChildFile ("lyrics.txt").replaceWithText ("[Verse 1]\ndagen one\n");
+        book.getChildFile ("songs/not-a-song").createDirectory();
+
+        const auto papaProject = projects.getChildFile ("c_opzetjes/papa Project");
+        const auto dagenProject = projects.getChildFile ("d_live versies/Dertig Dagen Project");
+        papaProject.createDirectory();
+        dagenProject.createDirectory();
+        const auto old = papaProject.getChildFile ("papa 3.2.als"), newest = papaProject.getChildFile ("papa 3.3.als");
+        const auto dagenSet = dagenProject.getChildFile ("dertig 1.0.als");
+        for (const auto& f : { old, newest, dagenSet })
+            fixtures.getChildFile ("parts.als").copyFileTo (f);
+        old.setLastModificationTime (juce::Time::getCurrentTime() - juce::RelativeTime::hours (2));
+        newest.setLastModificationTime (juce::Time::getCurrentTime());
+
+        EXPECT (SongLibrary::slug ("Papa is even weg!") == "papa-is-even-weg" && SongLibrary::slug ("  30 Dagen ") == "30-dagen");
+
+        // The library on its own (its own settings file).
+        {
+            SongLibrary lib (base.getChildFile ("lib.json"));
+            EXPECT (lib.songs().empty() && lib.recents().empty());
+            lib.setSongbookRoot (book);
+            const auto songs = lib.songs();
+            EXPECT (songs.size() == 2 && songs[0].title == "Dertig dagen" && songs[1].title == "Papa is even weg");
+            if (songs.size() == 2)
+            {
+                EXPECT (songs[1].project == "c_opzetjes/papa Project" && songs[1].folder == papa);
+                EXPECT (SongLibrary::songForSet (songs, old) == 1);          // by its project
+                EXPECT (SongLibrary::songForSet (songs, dagenSet) == 0);     // by the project folder's name
+                EXPECT (SongLibrary::songForSet (songs, fixtures.getChildFile ("parts.als")) == -1);
+                EXPECT (lib.setForSong (songs[1]) == juce::File());          // where the projects are isn't known yet
+                lib.learn (old, papa);
+                EXPECT (lib.projectsRoot() == projects && lib.songbookRoot() == book);
+                EXPECT (lib.setForSong (songs[1]) == newest);
+                EXPECT (lib.setForSong (songs[0]) == dagenSet);
+            }
+            lib.remember (old, papa);
+            lib.remember (dagenSet, dagen);
+            lib.remember (newest, papa);       // the same song again: one entry, on top
+            const auto recents = lib.recents();
+            EXPECT (recents.size() == 2 && recents[0].set == newest && recents[0].songFolder == papa && recents[1].set == dagenSet);
+            EXPECT (SongLibrary (base.getChildFile ("lib.json")).recents().size() == 2);   // kept in the file
+        }
+
+        // In the plugin: link the set, and its song comes with it.
+        {
+            BoothCueAudioProcessor p;
+            p.setSongbookFolder (book.getChildFile ("songs"));   // the songs folder is as good as the songbook
+            EXPECT (p.getLibrary().songbookRoot() == book && p.getSongTitle().isEmpty());
+            p.linkSet (old);
+            EXPECT (waitFor (p, State::ok));
+            EXPECT (p.getSongFolder() == papa && p.getSongTitle() == "Papa is even weg");
+            EXPECT (! p.getSong().blocks().empty() && p.getSong().blocks()[0].lines[0].text == "papa one");
+            EXPECT (p.getLinkStatus().file == old);              // the set that was picked, not the newest
+            EXPECT (p.getLibrary().projectsRoot() == projects);
+
+            // Pick a song: its folder and its newest set.
+            const auto songs = p.getLibrary().songs();
+            EXPECT (songs.size() == 2);
+            if (songs.size() != 2)
+                return;
+            p.linkSong (songs[0]);
+            EXPECT (p.getSongFolder() == dagen && p.getLinkStatus().file == dagenSet);
+            EXPECT (p.getSong().blocks()[0].lines[0].text == "dagen one");
+            p.linkSong (songs[1]);
+            EXPECT (p.getSongFolder() == papa && p.getLinkStatus().file == newest);
+
+            // A song folder picked by hand brings its set; the set's own song stays when it matches.
+            p.unlinkSong();
+            EXPECT (p.getSongFolder() == juce::File() && p.getLinkStatus().file == juce::File() && p.getSongTitle().isEmpty());
+            p.linkSongFolder (dagen);
+            EXPECT (p.getLinkStatus().file == dagenSet);
+            p.linkSet (old);                                     // another song's set: the song follows it
+            EXPECT (p.getSongFolder() == papa);
+            p.linkSongFolder (papa);
+            EXPECT (p.getLinkStatus().file == old);              // already this song's set: kept
+
+            const auto recents = p.getLibrary().recents();
+            // (the songs the tests before this one linked come after these two)
+            EXPECT (recents.size() >= 2 && recents[0].set == old && recents[0].songFolder == papa);
+            if (recents.size() >= 2)
+            {
+                p.linkRecent (recents[1]);
+                EXPECT (p.getSongFolder() == dagen && p.getLinkStatus().file == dagenSet);
+            }
+
+            // Saved with the set, and a set that is opened is a recent one.
+            juce::MemoryBlock saved;
+            p.getStateInformation (saved);
+            BoothCueAudioProcessor q;
+            q.setStateInformation (saved.getData(), static_cast<int> (saved.getSize()));
+            EXPECT (q.getSongFolder() == dagen && q.getLinkStatus().file == dagenSet);
+            const auto after = q.getLibrary().recents();
+            EXPECT (! after.empty() && after[0].songFolder == dagen);
+        }
+        base.deleteRecursively();
     }
 
     // The song folder of the songbook: texts in, tapped starts out.
@@ -903,6 +1014,12 @@ namespace
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
+    // The tests' own library file: never the user's recent songs.
+    const auto libraryFile = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                 .getChildFile ("boothcue-library-" + juce::String (juce::Random::getSystemRandom().nextInt (1 << 30)) + ".json");
+    setenv ("BOOTHCUE_LIBRARY", libraryFile.getFullPathName().toRawUTF8(), 1);
+    unsetenv ("BBB_SONGBOOK");
+    unsetenv ("BBB_ROOT");
     run();
     if (argc > 1)
     {
@@ -910,6 +1027,7 @@ int main (int argc, char** argv)
         linkTests (fixtures);
         tapTests (fixtures);
         songFolderTests (fixtures);
+        libraryTests (fixtures);
         chordTests (fixtures);
         chordMidiTests();
         settingsTests();
@@ -920,5 +1038,6 @@ int main (int argc, char** argv)
         std::printf ("plugin-smoke: no fixtures dir given, skipping the link checks\n");
     if (failures == 0)
         std::printf ("plugin-smoke: all checks passed\n");
+    libraryFile.deleteFile();
     return failures == 0 ? 0 : 1;
 }

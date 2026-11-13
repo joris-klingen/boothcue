@@ -195,6 +195,99 @@ void BoothCueAudioProcessor::linkSet (const juce::File& file)
     watcher.watch (file);
     ++contentVersion;
     updateStateSnapshot();
+    pairLinked (true);
+}
+
+// A set (or else a song folder) was just linked by hand: find the other half
+// in the songbook, and remember the pair.
+void BoothCueAudioProcessor::pairLinked (bool setLinked)
+{
+    if (linkingPair)
+        return;
+    const juce::ScopedValueSetter<bool> guard (linkingPair, true);
+
+    if (setLinked)
+    {
+        // The set decides the song: its own song's folder, also when another
+        // song's folder was linked before. No song for it in the songbook:
+        // what is linked stays.
+        const auto songs = library.songs();
+        const int index = SongLibrary::songForSet (songs, linkStatus.file);
+        if (index >= 0 && songs[static_cast<std::size_t> (index)].folder != songFolder)
+            linkSongFolder (songs[static_cast<std::size_t> (index)].folder);
+    }
+    else
+    {
+        // The song decides the set, unless the set linked is already its own
+        // (or the song's project can't be found: then the set stays).
+        library.learn ({}, songFolder);
+        const auto song = SongLibrary::songIn (songFolder);
+        if (linkStatus.file == juce::File() || SongLibrary::songForSet ({ song }, linkStatus.file) < 0)
+            if (const auto found = library.setForSong (song); found.existsAsFile())
+                linkSet (found);
+    }
+    library.learn (linkStatus.file, songFolder);
+    library.remember (linkStatus.file, songFolder);
+}
+
+void BoothCueAudioProcessor::setSongbookFolder (const juce::File& folder)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    // The songbook itself, or its songs/ folder, or one song in it.
+    auto root = folder;
+    if (root.getChildFile ("song.json").existsAsFile())
+        root = root.getParentDirectory();
+    if (root.getFileName() == "songs")
+        root = root.getParentDirectory();
+    library.setSongbookRoot (root);
+    ++contentVersion;
+}
+
+void BoothCueAudioProcessor::linkSong (const LibrarySong& s)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    {
+        const juce::ScopedValueSetter<bool> guard (linkingPair, true);
+        const auto set = library.setForSong (s);
+        if (set.existsAsFile())
+            linkSet (set);
+        else if (SongLibrary::songForSet ({ s }, linkStatus.file) < 0)
+            unlinkSet();   // the set of another song: not this one's
+        linkSongFolder (s.folder);
+    }
+    library.learn (linkStatus.file, songFolder);
+    library.remember (linkStatus.file, songFolder);
+}
+
+void BoothCueAudioProcessor::linkRecent (const SongLibrary::Recent& r)
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    {
+        const juce::ScopedValueSetter<bool> guard (linkingPair, true);
+        if (r.set != juce::File())
+            linkSet (r.set);
+        else
+            unlinkSet();
+        if (r.songFolder != juce::File())
+            linkSongFolder (r.songFolder);
+        else
+            unlinkSongFolder();
+    }
+    library.remember (linkStatus.file, songFolder);
+}
+
+void BoothCueAudioProcessor::unlinkSong()
+{
+    JUCE_ASSERT_MESSAGE_THREAD
+    unlinkSet();
+    unlinkSongFolder();
+}
+
+juce::String BoothCueAudioProcessor::getSongTitle() const
+{
+    if (songFolder != juce::File())
+        return SongLibrary::songIn (songFolder).title;
+    return linkStatus.file.getFileNameWithoutExtension();
 }
 
 void BoothCueAudioProcessor::unlinkSet()
@@ -405,6 +498,7 @@ void BoothCueAudioProcessor::linkSongFolder (const juce::File& folder)
     updateSongFolderStatus();
     ++contentVersion;
     updateStateSnapshot();
+    pairLinked (false);
 }
 
 void BoothCueAudioProcessor::unlinkSongFolder()
@@ -1099,6 +1193,10 @@ void BoothCueAudioProcessor::applyState (const juce::ValueTree& state)
         }
         updateSongFolderStatus();
     }
+
+    // A set opened in Live: its song is one of the recent ones from now on.
+    library.learn (linkStatus.file, songFolder);
+    library.remember (linkStatus.file, songFolder);
 
     watcher.watch (linkStatus.file);
     ++contentVersion;

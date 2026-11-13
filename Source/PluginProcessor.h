@@ -5,6 +5,7 @@
 #include "ChordChart.h"
 #include "Prompter.h"
 #include "SetWatcher.h"
+#include "SongLibrary.h"
 #include "Song.h"
 #include "Transport.h"
 
@@ -113,6 +114,18 @@ public:
     // timed lyrics, as Save writes them) and laid over the text when it is read.
     void linkSongFolder (const juce::File&);
     void unlinkSongFolder();
+
+    // ---- one choice per song (message thread) --------------------------------------
+    // The set and the song folder belong together, and the library knows how:
+    // linking a set also links its song's folder in the songbook, linking a
+    // song folder also links the newest set of its Live project. What was
+    // linked last is remembered for every set (SongLibrary).
+    const SongLibrary& getLibrary() const noexcept                      { return library; }
+    void setSongbookFolder (const juce::File&);
+    void linkSong (const LibrarySong&);        // its folder, and its newest set when that can be found
+    void linkRecent (const SongLibrary::Recent&);
+    void unlinkSong();                         // the set and the song folder
+    juce::String getSongTitle() const;         // the linked song's title, else the set's name; "" = nothing linked
     juce::File getSongFolder() const                                    { return songFolder; }
     juce::String getSongFolderStatus() const                            { return songFolderStatus; }
     // Looks at the folder's files and writes the timings when they changed.
@@ -233,6 +246,9 @@ private:
     void applyFolderLyrics();
     void applyFolderChords();
     void updateSongFolderStatus();
+    SongLibrary library;
+    bool linkingPair = false;      // linking a set and its song together: one finds the other only once
+    void pairLinked (bool setLinked);   // a set (else a song folder) was just linked: link the other, remember both
     juce::File songFolder;
     WatchedText folderLyrics, folderChords;
     juce::String songFolderStatus, timingsWritten;

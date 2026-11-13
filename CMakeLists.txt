@@ -86,6 +86,7 @@ if(BOOTHCUE_BUILD_PLUGIN)
         Source/PrompterView.cpp
         Source/DisplayWindow.cpp
         Source/SetWatcher.cpp
+        Source/SongLibrary.cpp
         Source/ChordMidi.cpp
     )
 
