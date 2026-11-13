@@ -755,6 +755,10 @@ void BoothCueAudioProcessor::showDisplay()
         };
     }
     displayWindow->setTrackName (getTrackName());
+    // The window is made off the desktop (so a restored placement applies
+    // before it appears); it needs a native window of its own to be seen.
+    if (! displayWindow->isOnDesktop())
+        displayWindow->addToDesktop();
     displayWindow->setVisible (true);
     displayWindow->toFront (true);
     // Full screen is only possible once the window is on screen.
@@ -772,7 +776,7 @@ void BoothCueAudioProcessor::hideDisplay()
 
 bool BoothCueAudioProcessor::isDisplayVisible() const
 {
-    return displayWindow != nullptr && displayWindow->isVisible();
+    return displayWindow != nullptr && displayWindow->isOnDesktop() && displayWindow->isVisible();
 }
 
 juce::String BoothCueAudioProcessor::getTrackName() const
