@@ -2,8 +2,6 @@
 
 #include "Theme.h"
 
-#include <cmath>
-
 namespace boothcue
 {
 
@@ -110,8 +108,7 @@ juce::String LiveFeed::sceneJson (const PrompterScene& s, const Song& song, cons
     if (s.hasLyrics)
     {
         o->setProperty ("line", str (s.currentLine));
-        if (s.lineAhead)   // shown ahead of its first word: how far the run-up is (0..1)
-            o->setProperty ("lineRunUp", std::round (s.lineRunUp * 20.0) / 20.0);
+        o->setProperty ("lineAhead", s.lineAhead);   // shown ahead of its first word
         o->setProperty ("nextLine", str (s.nextLine));
         o->setProperty ("laterLine", str (s.laterLine));
         if (s.nextCue >= 0)

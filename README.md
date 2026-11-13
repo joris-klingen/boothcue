@@ -28,8 +28,7 @@ switched off, the same window works for a keys or guitar player.
     start.
   - The lyrics in three rows: the line to sing, large (ordinary lines stay on
     one line on a 10" iPad), and the two lines after it. A line takes the large
-    row a little before its first word (1 bar by default), dimmer, with a bar
-    under it that fills up to the moment to start. A count-in to the next
+    row a little before its first word (1 bar by default), dimmer until then. A count-in to the next
     entry ("2 bars", "1 bar", then a big 4-3-2-1) can be switched on.
 - **Toggles** for song part, lyrics, chords and bass note, and a text size.
 - **Chords detected from the set's MIDI.** BoothCue works out which tracks

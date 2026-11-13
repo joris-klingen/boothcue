@@ -40,8 +40,7 @@ with non-trivial commits. The plan and open backlog are in [TODO.md](TODO.md).
 - **Display rework** (after v0.1.0):
   - a line is shown ahead of its first word (`DisplaySettings::leadBars`,
     1 bar by default, at most half the time since the line before it; decided
-    in `buildScene`, editor: *Show a line ahead by*), dimmer and with a run-up
-    bar; a third lyric row (the line after the next);
+    in `buildScene`, editor: *Show a line ahead by*), dimmer until then; a third lyric row (the line after the next);
   - no header (part name, next part, bar.beat, PLAY / REC, loop pass): from
     the top the parts, the ticker, the lyrics. The count-in is off unless
     switched on, and never sent to the phones;

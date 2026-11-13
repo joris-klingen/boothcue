@@ -310,20 +310,10 @@ void PrompterPainter::paintLyrics (juce::Graphics& g, juce::Rectangle<float> are
     if (! resting)
     {
         // Ordinary lines on one line (on a 10" iPad too); long ones wrap.
-        // Shown ahead of its first word: a little dimmer, with a bar under
-        // it that fills up to the moment to start singing.
+        // Shown ahead of its first word: a little dimmer until then.
         currentLines = drawLine (g, currentFit, currentWrapFit, str (s.currentLine), top,
                                  8.0f * unit, 4.2f * unit, 3, 6.0f * unit, 3.5f * unit, true,
                                  s.lineAhead ? theme::text.withAlpha (0.72f) : theme::text);
-        if (s.lineAhead)
-        {
-            const float w = juce::jmin (top.getWidth() * 0.5f, 60.0f * unit), h = 0.8f * unit;
-            const auto track = juce::Rectangle<float> (top.getCentreX() - w * 0.5f, top.getBottom() - h, w, h);
-            g.setColour (theme::faint);
-            g.fillRoundedRectangle (track, h * 0.5f);
-            g.setColour (theme::count);
-            g.fillRoundedRectangle (track.withWidth (juce::jmax (h, w * (float) s.lineRunUp)), h * 0.5f);
-        }
     }
     else if (s.countdown.kind == Countdown::Kind::beats)
     {

@@ -133,7 +133,6 @@ PrompterScene buildScene (const Song& song, const TransportState& t, const Displ
             {
                 s.lineAhead   = true;
                 s.beatsToLine = s.beatsToNextLine;
-                s.lineRunUp   = std::clamp (1.0 - s.beatsToLine / lead, 0.0, 1.0);
                 s.currentCue  = s.nextCue;
                 s.nextCue     = next + 1 < cues.size() ? s.nextCue + 1 : -1;
                 s.currentLine = lineText (song, s.currentCue);

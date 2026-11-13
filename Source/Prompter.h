@@ -59,10 +59,9 @@ struct PrompterScene
     double beatsToNextLine = 0.0;
     Countdown countdown;
     // lineAhead: currentLine is shown ahead of its start (DisplaySettings::
-    // leadBars); it starts in beatsToLine, and lineRunUp goes 0 -> 1 over the
-    // time it is shown ahead.
+    // leadBars); it starts in beatsToLine.
     bool   lineAhead = false;
-    double beatsToLine = 0.0, lineRunUp = 0.0;
+    double beatsToLine = 0.0;
 
     // Chords (with showChords): names spelled in the song's key; with
     // showBassNote the bass note is shown on its own (and left out of the name).
