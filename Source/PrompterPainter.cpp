@@ -65,16 +65,22 @@ namespace
         return layout;
     }
 
-    // Header and timeline heights, in units.
-    constexpr float kHeaderUnits   = 11.0f;
-    constexpr float kTimelineUnits = 5.0f;
+    // From the top: the parts of the whole song, the ticker, the lyrics.
+    // Nothing above the parts (no part name, bar.beat or PLAY / REC: on the
+    // singer's screen that is clutter, and a REC sign only adds stress). The
+    // room above the strip is for the playhead's marker.
+    constexpr float kTopUnits      = 1.5f;
+    constexpr float kTimelineUnits = 6.0f;
     constexpr float kGapUnits      = 2.0f;
     constexpr float kMarginUnits   = 3.0f;
+
+    // A part that is over: its Live colour, this far towards the background.
+    constexpr float kPastVeil = 0.6f;
 
     juce::Rectangle<float> timelineArea (juce::Rectangle<int> bounds, float unit)
     {
         auto area = bounds.toFloat().reduced (kMarginUnits * unit);
-        area.removeFromTop ((kHeaderUnits + kGapUnits) * unit);
+        area.removeFromTop (kTopUnits * unit);
         return area.removeFromTop (kTimelineUnits * unit);
     }
 
@@ -105,8 +111,7 @@ void PrompterPainter::paint (juce::Graphics& g, juce::Rectangle<int> bounds,
 
     if (settings.showSongPart)
     {
-        paintHeader (g, area.removeFromTop (kHeaderUnits * unit), unit, s, song);
-        area.removeFromTop (kGapUnits * unit);
+        area.removeFromTop (kTopUnits * unit);
         paintTimeline (g, area.removeFromTop (kTimelineUnits * unit), unit, s, song);
         area.removeFromTop (kGapUnits * 2.0f * unit);
     }
@@ -136,7 +141,7 @@ void PrompterPainter::paint (juce::Graphics& g, juce::Rectangle<int> bounds,
     {
         if (ticker)
         {
-            const float h = (chords ? (settings.showBassNote ? 14.0f : 12.0f) : 8.0f) * unit;
+            const float h = (chords ? 13.0f : 7.0f) * unit;
             paintTicker (g, area.removeFromTop (h), unit, s, song, settings, false);
             area.removeFromTop (2.5f * unit);
         }
@@ -198,81 +203,6 @@ void PrompterPainter::paintChords (juce::Graphics& g, juce::Rectangle<float> are
     }
 }
 
-void PrompterPainter::paintHeader (juce::Graphics& g, juce::Rectangle<float> area, float unit,
-                                   const PrompterScene& s, const Song& song)
-{
-    // Right: transport state, then bar.beat.
-    auto right = area.removeFromRight (34.0f * unit);
-    if (s.hasPosition)
-    {
-        auto top = right.removeFromTop (7.0f * unit);
-        g.setColour (theme::text);
-        g.setFont (font (7.0f * unit, true));
-        g.drawText (juce::String (s.barBeat.bar) + "." + juce::String (s.barBeat.beat), top,
-                    juce::Justification::centredRight, false);
-
-        // State pill under it: REC beats PLAY beats STOP; "Pass n" while looping.
-        auto row = right.removeFromTop (4.0f * unit).withTrimmedTop (0.6f * unit);
-        g.setFont (font (2.8f * unit, true));
-
-        if (s.loopPass > 0)
-        {
-            const auto text = "PASS " + juce::String (s.loopPass);
-            const auto w = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), text) + 2.0f * unit;
-            auto pill = row.removeFromRight (w);
-            g.setColour (theme::loop);
-            g.fillRoundedRectangle (pill, 0.6f * unit);
-            g.setColour (theme::background);
-            g.drawText (text, pill, juce::Justification::centred, false);
-            row.removeFromRight (1.2f * unit);
-        }
-
-        const auto stateColour = s.recording ? theme::record : s.playing ? theme::play : theme::dim;
-        const auto stateText   = s.recording ? "REC" : s.playing ? "PLAY" : "STOP";
-        g.setColour (stateColour);
-        const auto w = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), stateText);
-        auto label = row.removeFromRight (w);
-        g.drawText (stateText, label, juce::Justification::centredRight, false);
-        row.removeFromRight (0.8f * unit);
-        const auto dot = row.removeFromRight (2.0f * unit).withSizeKeepingCentre (1.8f * unit, 1.8f * unit);
-        if (s.recording)
-            g.fillEllipse (dot);
-        else if (s.playing)
-        {
-            juce::Path tri;
-            tri.addTriangle (dot.getX(), dot.getY(), dot.getX(), dot.getBottom(), dot.getRight(), dot.getCentreY());
-            g.fillPath (tri);
-        }
-        else
-            g.fillRect (dot.reduced (0.15f * unit));
-    }
-
-    // Left: the section we're in, then what comes next.
-    area.removeFromRight (2.0f * unit);
-    auto nameRow = area.removeFromTop (7.0f * unit);
-
-    juce::String name;
-    auto colour = theme::text;
-    if (! s.hasSong)              { name = "No set linked"; colour = theme::dim; }
-    else if (s.section >= 0)      name = sectionName (song, s.section);
-    else if (s.hasPosition && s.ppq < song.start())  { name = "Before the song"; colour = theme::dim; }
-    else if (s.hasPosition && s.nextSection >= 0)    { name = "Gap"; colour = theme::dim; }
-    else if (s.hasPosition)       { name = "End"; colour = theme::dim; }
-
-    g.setColour (colour);
-    g.setFont (font (6.5f * unit, true));
-    g.drawFittedText (name, nameRow.toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
-
-    if (s.hasSong && s.hasPosition && s.nextSection >= 0)
-    {
-        g.setColour (theme::dim);
-        g.setFont (font (3.4f * unit));
-        g.drawFittedText ("next: " + sectionName (song, s.nextSection) + "  in "
-                              + str (describeDistance (s.beatsToNextSection, s.sig)),
-                          area.removeFromTop (4.0f * unit).toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
-    }
-}
-
 void PrompterPainter::paintTimeline (juce::Graphics& g, juce::Rectangle<float> area, float unit,
                                      const PrompterScene& s, const Song& song)
 {
@@ -288,7 +218,7 @@ void PrompterPainter::paintTimeline (juce::Graphics& g, juce::Rectangle<float> a
     }
 
     const float gap = juce::jmax (1.0f, 0.25f * unit);
-    g.setFont (font (2.5f * unit, true));
+    g.setFont (font (2.9f * unit, true));
 
     const auto& sections = song.sections();
     for (std::size_t i = 0; i < sections.size(); ++i)
@@ -298,11 +228,16 @@ void PrompterPainter::paintTimeline (juce::Graphics& g, juce::Rectangle<float> a
         const float x1 = xFor (sec.end, area, s);
         auto block = juce::Rectangle<float> (x0, area.getY(), juce::jmax (1.0f, x1 - x0 - gap), area.getHeight());
 
+        // Every part in the colour its clip has in Live. The part that is
+        // playing stands taller, with an outline; a part that is over gets a
+        // dark veil (the colour stays recognisable).
         const bool now  = static_cast<int> (i) == s.section;
         const bool past = s.hasPosition && sec.end <= s.ppq;
         const auto colour = theme::partColour (sec);
-        g.setColour (now ? colour : colour.withMultipliedSaturation (past ? 0.45f : 0.8f)
-                                          .withMultipliedBrightness (past ? 0.35f : 0.6f));
+        const auto fill = past ? colour.interpolatedWith (theme::background, kPastVeil) : colour;
+        if (! now)
+            block = block.reduced (0.0f, 0.55f * unit);
+        g.setColour (fill);
         g.fillRoundedRectangle (block, 0.4f * unit);
         if (now)
         {
@@ -312,7 +247,7 @@ void PrompterPainter::paintTimeline (juce::Graphics& g, juce::Rectangle<float> a
 
         if (block.getWidth() > 3.0f * unit)
         {
-            g.setColour (now ? theme::inkOn (colour) : past ? theme::text.withAlpha (0.45f) : theme::text.withAlpha (0.9f));
+            g.setColour (theme::inkOn (fill).withAlpha (past ? 0.7f : 1.0f));
             g.drawFittedText (sectionName (song, static_cast<int> (i)),
                               block.reduced (0.8f * unit, 0.0f).toNearestInt(),
                               juce::Justification::centredLeft, 1, 1.0f);
@@ -345,7 +280,7 @@ void PrompterPainter::paintTimeline (juce::Graphics& g, juce::Rectangle<float> a
         g.fillRect (juce::Rectangle<float> (x - w * 0.5f, area.getY() - 1.0f * unit, w, area.getHeight() + 2.0f * unit));
         juce::Path tri;
         const float ty = area.getY() - 1.0f * unit;
-        tri.addTriangle (x - 1.2f * unit, ty - 1.4f * unit, x + 1.2f * unit, ty - 1.4f * unit, x, ty);
+        tri.addTriangle (x - 0.9f * unit, ty - 0.9f * unit, x + 0.9f * unit, ty - 0.9f * unit, x, ty);
         g.fillPath (tri);
     }
 }
@@ -364,8 +299,10 @@ void PrompterPainter::paintLyrics (juce::Graphics& g, juce::Rectangle<float> are
     }
 
     currentLines = 0;
-    auto top  = area.removeFromTop (area.getHeight() * 0.62f);
-    auto next = area.withTrimmedTop (1.5f * unit);
+    // Three rows: the line being sung, the next one, and the one after it.
+    auto top   = area.removeFromTop (area.getHeight() * 0.54f);
+    auto later = area.removeFromBottom (area.getHeight() * 0.44f);
+    auto next  = area.withTrimmedTop (1.5f * unit);
 
     const bool counting = s.countdown.kind != Countdown::Kind::none;
     const bool resting  = s.currentLine.empty();
@@ -373,8 +310,20 @@ void PrompterPainter::paintLyrics (juce::Graphics& g, juce::Rectangle<float> are
     if (! resting)
     {
         // Ordinary lines on one line (on a 10" iPad too); long ones wrap.
+        // Shown ahead of its first word: a little dimmer, with a bar under
+        // it that fills up to the moment to start singing.
         currentLines = drawLine (g, currentFit, currentWrapFit, str (s.currentLine), top,
-                                 8.0f * unit, 4.2f * unit, 3, 6.0f * unit, 3.5f * unit, true, theme::text);
+                                 8.0f * unit, 4.2f * unit, 3, 6.0f * unit, 3.5f * unit, true,
+                                 s.lineAhead ? theme::text.withAlpha (0.72f) : theme::text);
+        if (s.lineAhead)
+        {
+            const float w = juce::jmin (top.getWidth() * 0.5f, 60.0f * unit), h = 0.8f * unit;
+            const auto track = juce::Rectangle<float> (top.getCentreX() - w * 0.5f, top.getBottom() - h, w, h);
+            g.setColour (theme::faint);
+            g.fillRoundedRectangle (track, h * 0.5f);
+            g.setColour (theme::count);
+            g.fillRoundedRectangle (track.withWidth (juce::jmax (h, w * (float) s.lineRunUp)), h * 0.5f);
+        }
     }
     else if (s.countdown.kind == Countdown::Kind::beats)
     {
@@ -400,6 +349,9 @@ void PrompterPainter::paintLyrics (juce::Graphics& g, juce::Rectangle<float> are
 
     if (s.nextLine.empty())
         return;
+    if (! s.laterLine.empty())
+        drawLine (g, laterFit, laterWrapFit, str (s.laterLine), later, 3.8f * unit, 2.6f * unit, 2, 3.4f * unit, 2.2f * unit,
+                  false, theme::dim.withAlpha (0.6f));
 
     // The next line: grey, smaller. While it is being counted in it turns white
     // (it's the one to sing), and if a current line is still showing, the count
@@ -519,11 +471,14 @@ void PrompterPainter::paintTicker (juce::Graphics& g, juce::Rectangle<float> are
     g.setColour (theme::sectionPast);
     g.fillRect (area);
 
-    const float stripe = 0.7f * unit;           // a band of full colour along the top
-    const float nameH = (big ? 3.2f : 2.4f) * unit;
-    auto body = area.withTrimmedTop (stripe);
+    // Along the top: the parts as in Live's arrangement, a band in the clip's
+    // colour with its name. Under it the part's colour is only a tint, so the
+    // chords read on every colour.
+    const float bandH = (big ? 3.4f : 2.7f) * unit;
+    const float bandGap = juce::jmax (1.0f, 0.2f * unit);
+    auto body = area.withTrimmedTop (bandH);
 
-    // Song parts as backgrounds.
+    g.setFont (font (bandH * 0.74f, true));
     for (const auto& sec : song.sections())
     {
         if (sec.end <= left || sec.start >= right)
@@ -532,97 +487,144 @@ void PrompterPainter::paintTicker (juce::Graphics& g, juce::Rectangle<float> are
         const auto colour = theme::partColour (sec);
         const bool now = s.hasPosition && s.ppq >= sec.start && s.ppq < sec.end;
         const bool past = s.hasPosition && sec.end <= s.ppq;
-        g.setColour (colour.withAlpha (past ? 0.14f : now ? 0.42f : 0.30f));
-        g.fillRect (juce::Rectangle<float> (x0, area.getY(), x1 - x0, area.getHeight()));
-        g.setColour (colour.withAlpha (past ? 0.45f : 1.0f));
-        g.fillRect (juce::Rectangle<float> (x0, area.getY(), x1 - x0, stripe));
-        if (sec.start >= left)
-        {
-            g.setColour (colour.brighter (0.3f));
-            g.fillRect (juce::Rectangle<float> (x0, area.getY(), juce::jmax (2.0f, 0.3f * unit), area.getHeight()));
-        }
+        g.setColour (colour.withAlpha (past ? 0.08f : now ? 0.26f : 0.17f));
+        g.fillRect (juce::Rectangle<float> (x0, body.getY(), x1 - x0, body.getHeight()));
+
+        const auto fill = past ? colour.interpolatedWith (theme::background, kPastVeil) : colour;
+        const auto band = juce::Rectangle<float> (x0, area.getY(), juce::jmax (1.0f, x1 - x0 - bandGap), bandH);
+        g.setColour (fill);
+        g.fillRect (band);
         // Its name at its start, or pinned at the left edge if it began earlier.
+        if (band.getWidth() > 3.0f * unit)
         {
-            g.setColour (theme::text.withAlpha (past ? 0.5f : 0.95f));
-            g.setFont (font (nameH * 0.85f, true));
-            g.drawText (str (sec.name), juce::Rectangle<float> (x0 + 0.7f * unit, body.getY(), x1 - x0 - unit, nameH),
-                        juce::Justification::centredLeft, true);
+            g.setColour (theme::inkOn (fill).withAlpha (past ? 0.7f : 1.0f));
+            g.drawText (str (sec.name), band.reduced (0.7f * unit, 0.0f), juce::Justification::centredLeft, true);
         }
     }
 
-    // Bar lines, faint (a little less faint every 4 bars).
+    // Bar lines, faint (a little less faint every 4 bars): the only vertical
+    // lines in the ticker.
     for (double b = std::ceil (left / bar - 1.0e-9) * bar; b < right; b += bar)
     {
         const int number = static_cast<int> (std::floor (b / bar + 0.5));
-        g.setColour (theme::text.withAlpha (number % 4 == 0 ? 0.16f : 0.07f));
-        g.fillRect (juce::Rectangle<float> (x (b), body.getY() + nameH, juce::jmax (1.0f, 0.12f * unit), body.getHeight() - nameH));
+        g.setColour (theme::text.withAlpha (number % 4 == 0 ? 0.18f : 0.07f));
+        g.fillRect (juce::Rectangle<float> (x (b), body.getY(), juce::jmax (1.0f, 0.12f * unit), body.getHeight()));
     }
 
-    // Where lyric lines start: small marks along the bottom.
+    // Where lyric lines start: a quiet row of dots along the bottom.
+    const float dotsH = 1.7f * unit;
     if (settings.showLyrics)
         for (const auto& cue : song.cues())
             if (cue.ppq >= left && cue.ppq < right)
             {
-                juce::Path tri;
-                const float cx = x (cue.ppq), by = area.getBottom();
-                tri.addTriangle (cx - 0.6f * unit, by, cx + 0.6f * unit, by, cx, by - 1.0f * unit);
-                g.setColour (theme::text.withAlpha (cue.ppq < s.ppq ? 0.3f : 0.75f));
-                g.fillPath (tri);
+                const float r = 0.36f * unit;
+                g.setColour (theme::text.withAlpha (cue.ppq < s.ppq ? 0.22f : 0.7f));
+                g.fillEllipse (x (cue.ppq) - r, area.getBottom() - dotsH * 0.5f - r, 2.0f * r, 2.0f * r);
             }
 
-    // The chords, at their changes.
+    // The chords, at their changes: every name the same size, a chord that
+    // is only repeated is not written again, and a bass note is shown only
+    // where it is not the chord's root.
     if (settings.showChords && s.hasChords)
     {
-        auto row = body.withTrimmedTop (nameH).withTrimmedBottom (1.2f * unit * (big ? 1.3f : 1.0f));
-        const float bassH = settings.showBassNote ? row.getHeight() * 0.32f : 0.0f;
+        struct Run { double start, end; juce::String name, bass; bool now, past; };
+        std::vector<Run> runs;
         const auto key = song.key();
         const auto& chords = song.chords();
         const int current = s.hasPosition ? song.chordAt (s.ppq) : -1;
+        bool anyBass = false;
+        std::size_t hash = chords.size();
         for (std::size_t i = 0; i < chords.size(); ++i)
         {
             const auto& c = chords[i];
-            if (c.end <= left || c.start >= right)
-                continue;
-            const bool now = static_cast<int> (i) == current;
-            const bool past = s.hasPosition && c.end <= s.ppq;
-            const float x0 = x (std::max (c.start, left));
-            const float x1 = x (std::min (c.end, right));
-            if (c.start >= left)
-            {
-                g.setColour (theme::text.withAlpha (past ? 0.12f : 0.3f));
-                g.fillRect (juce::Rectangle<float> (x (c.start), row.getY(), juce::jmax (1.5f, 0.2f * unit), row.getHeight()));
-            }
-            auto cell = juce::Rectangle<float> (x0 + 0.6f * unit, row.getY(), x1 - x0 - 1.0f * unit, row.getHeight());
-            if (cell.getWidth() < 2.0f * unit)
-                continue;
             auto chord = c.chord;
+            juce::String bass;
             if (settings.showBassNote)
+            {
+                if (chord.bass >= 0 && chord.bass != chord.root)
+                {
+                    Chord bassOnly;
+                    bassOnly.root = chord.bass;
+                    bassOnly.quality = Quality::major;
+                    bass = str (chordName (bassOnly, key));   // a plain note name
+                    anyBass = true;
+                }
                 chord.bass = chord.root;
-            auto name = str (chordName (chord, key)) + (c.confidence < 0.15 ? "?" : "");
-            auto nameArea = cell.withTrimmedBottom (bassH);
-            // As large as it should be; smaller (to 60%) in a short chord's cell;
-            // left out if even that doesn't fit (never cut off with "...").
-            float size = juce::jmin (nameArea.getHeight() * 0.9f, (now ? 6.5f : 5.0f) * unit * (big ? 1.6f : 1.0f));
-            const float width = juce::GlyphArrangement::getStringWidth (font (size, true), name);
-            if (width > nameArea.getWidth())
-            {
-                if (width * 0.6f > nameArea.getWidth())
-                    continue;
-                size *= nameArea.getWidth() / width;
             }
-            g.setColour (now ? theme::count : past ? theme::text.withAlpha (0.4f) : theme::text);
-            g.setFont (font (size, true));
-            g.drawText (name, nameArea, juce::Justification::centredLeft, false);
-
-            if (settings.showBassNote && c.chord.bass >= 0)
+            const auto name = str (chordName (chord, key)) + (c.confidence < 0.15 ? "?" : "");
+            const bool now = static_cast<int> (i) == current;
+            if (! runs.empty() && runs.back().name == name && runs.back().bass == bass
+                && std::abs (c.start - runs.back().end) < 1.0e-6)
             {
-                Chord bassOnly;
-                bassOnly.root = c.chord.bass;
-                bassOnly.quality = Quality::major;
-                g.setColour (theme::sectionNow.brighter (0.35f).withAlpha (past ? 0.4f : 1.0f));
-                g.setFont (font (juce::jmin (bassH * 0.85f, size * 0.55f), true));
-                g.drawFittedText (str (chordName (bassOnly, key)), cell.withTop (nameArea.getBottom()).toNearestInt(),
-                                  juce::Justification::centredLeft, 1, 0.7f);
+                runs.back().end = c.end;
+                runs.back().now = runs.back().now || now;
+            }
+            else
+            {
+                runs.push_back ({ c.start, c.end, name, bass, now, false });
+                hash = hash * 31u + static_cast<std::size_t> (name.hashCode64())
+                       + static_cast<std::size_t> (c.start * 96.0);
+            }
+        }
+        for (auto& r : runs)
+            r.past = s.hasPosition && r.end <= s.ppq;
+
+        auto row = body.withTrimmedBottom (dotsH).reduced (0.0f, 0.3f * unit);
+        const float bassH = anyBass ? row.getHeight() * 0.30f : 0.0f;
+        const auto nameRow = row.withTrimmedBottom (bassH);
+        const float pad = 0.6f * unit;
+        const float base = juce::jmin (nameRow.getHeight() * 0.92f, 5.4f * unit * (big ? 1.6f : 1.0f));
+        const float beatW = area.getWidth() / static_cast<float> (span);
+
+        // One size for the whole song: the largest at which three in four of
+        // the chords fit in the room up to the next change (never under 80 %).
+        // A short chord that doesn't fit at that size is drawn smaller (to
+        // 60 % of the full size), and left out if even that doesn't fit:
+        // never cut off.
+        auto& fit = tickerFit;
+        if (fit.hash != hash || ! juce::exactlyEqual (fit.base, base) || ! juce::exactlyEqual (fit.beatW, beatW))
+        {
+            fit = { hash, base, beatW, 1.0f, {} };
+            std::vector<float> ratios;
+            const auto f = font (base, true);
+            for (const auto& r : runs)
+            {
+                fit.widths.push_back (juce::GlyphArrangement::getStringWidth (f, r.name));
+                ratios.push_back ((static_cast<float> (r.end - r.start) * beatW - 2.0f * pad) / juce::jmax (1.0f, fit.widths.back()));
+            }
+            if (! ratios.empty())
+            {
+                std::sort (ratios.begin(), ratios.end());
+                fit.scale = juce::jlimit (0.8f, 1.0f, ratios[ratios.size() / 4]);
+            }
+        }
+
+        for (std::size_t i = 0; i < runs.size(); ++i)
+        {
+            const auto& r = runs[i];
+            if (r.end <= left || r.start >= right)
+                continue;
+            const float x0 = x (std::max (r.start, left)) + pad;
+            const float room = x (std::min (r.end, right)) - pad - x0;
+            float scale = fit.scale;
+            if (fit.widths[i] * scale > room + 0.5f)
+            {
+                scale = room / fit.widths[i];
+                if (scale < 0.6f)
+                    continue;
+            }
+            const float size = base * scale, width = fit.widths[i] * scale;
+            const float alpha = r.past ? 0.4f : 1.0f;
+            g.setColour (r.now ? theme::count : theme::text.withAlpha (alpha));
+            g.setFont (font (size, true));
+            g.drawText (r.name, juce::Rectangle<float> (x0, nameRow.getY(), width + unit, nameRow.getHeight()),
+                        juce::Justification::centredLeft, false);
+            if (r.bass.isNotEmpty())
+            {
+                g.setColour (theme::sectionNow.brighter (0.35f).withAlpha (alpha));
+                g.setFont (font (juce::jmin (bassH * 0.9f, size * 0.6f), true));
+                g.drawText (r.bass, juce::Rectangle<float> (x0, nameRow.getBottom(), room, bassH),
+                            juce::Justification::centredLeft, false);
             }
         }
     }
@@ -632,7 +634,7 @@ void PrompterPainter::paintTicker (juce::Graphics& g, juce::Rectangle<float> are
     {
         g.setColour (s.looping ? theme::loop : theme::faint);
         g.fillRect (juce::Rectangle<float> (x (std::max (s.loopStart, left)), area.getY(),
-                                            x (std::min (s.loopEnd, right)) - x (std::max (s.loopStart, left)), stripe * 0.6f));
+                                            x (std::min (s.loopEnd, right)) - x (std::max (s.loopStart, left)), 0.45f * unit));
     }
 
     if (s.hasPosition)

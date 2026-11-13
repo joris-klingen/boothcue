@@ -14,15 +14,18 @@ namespace boothcue
 
 struct DisplaySettings
 {
-    // The four "show" toggles. Chords and bass note are stored and offered in
-    // the editor, but nothing draws them until chord detection lands (TODO.md,
-    // "Next: chords").
-    bool showSongPart = true;    // header (section, next section, bar.beat) + timeline
+    // The four "show" toggles.
+    bool showSongPart = true;    // the strip of the whole song's parts, and the ticker
     bool showLyrics   = true;    // current / next line and the count-in
     bool showChords   = true;
     bool showBassNote = true;
 
     float fontScale = 1.0f;      // 0.5 .. 2, on top of the size derived from the window
+    // A line is shown this long before its first word, so it can be read
+    // ahead (0 = at the word itself). Never more than half the time since the
+    // line before it started; entries that get a count-in are announced by
+    // the count instead.
+    double leadBars = 1.0;
     CountSettings count;
 };
 
@@ -52,8 +55,14 @@ struct PrompterScene
     bool hasLyrics = false;
     int  currentCue = -1, nextCue = -1;
     std::string currentLine, nextLine;
+    std::string laterLine;         // the line after nextLine: one more row to read ahead
     double beatsToNextLine = 0.0;
     Countdown countdown;
+    // lineAhead: currentLine is shown ahead of its start (DisplaySettings::
+    // leadBars); it starts in beatsToLine, and lineRunUp goes 0 -> 1 over the
+    // time it is shown ahead.
+    bool   lineAhead = false;
+    double beatsToLine = 0.0, lineRunUp = 0.0;
 
     // Chords (with showChords): names spelled in the song's key; with
     // showBassNote the bass note is shown on its own (and left out of the name).

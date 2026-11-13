@@ -47,11 +47,11 @@ private:
     int drawLine (juce::Graphics&, Fit& oneLine, Fit& wrapped, const juce::String& text, juce::Rectangle<float> area,
                   float oneLineMax, float oneLineMin, int wrapLines, float wrapMax, float wrapMin, bool bold, juce::Colour);
 
-    void paintHeader (juce::Graphics&, juce::Rectangle<float>, float unit, const PrompterScene&, const Song&);
     void paintTimeline (juce::Graphics&, juce::Rectangle<float>, float unit, const PrompterScene&, const Song&);
     // The middle zoom level: about 16 bars around the playhead (a quarter of
     // it behind, the rest ahead), the song parts as coloured backgrounds, bar
-    // lines, the chords at their changes, where lyric lines start.
+    // lines, the chords at their changes (one size, repeats not written
+    // again), where lyric lines start.
     void paintTicker (juce::Graphics&, juce::Rectangle<float>, float unit, const PrompterScene&, const Song&,
                       const DisplaySettings&, bool big);
     void paintLyrics (juce::Graphics&, juce::Rectangle<float>, float unit, const PrompterScene&);
@@ -60,7 +60,17 @@ private:
     // "in 2 beats"). `big`: chords are the main thing on screen (lyrics off).
     void paintChords (juce::Graphics&, juce::Rectangle<float>, float unit, const PrompterScene&, bool big);
 
-    Fit currentFit, currentWrapFit, nextFit, nextWrapFit, sectionFit;
+    Fit currentFit, currentWrapFit, nextFit, nextWrapFit, laterFit, laterWrapFit, sectionFit;
+
+    // The ticker's chord size (one for the whole song) and the names' widths
+    // at the base size, kept until the chords or the ticker's scale change.
+    struct TickerFit
+    {
+        std::size_t hash = 0;
+        float base = 0.0f, beatW = 0.0f, scale = 1.0f;
+        std::vector<float> widths;
+    };
+    TickerFit tickerFit;
     int currentLines = 0;
 };
 

@@ -143,6 +143,8 @@ private:
     juce::ComboBox countBox;
     juce::Label  entryLabel { {}, "Count lines after a rest of" };
     juce::ComboBox entryBox;
+    juce::Label  leadLabel { {}, "Show a line ahead by" };
+    juce::ComboBox leadBox;
 
     // ---- left: tap-along ----
     juce::Label  snapLabel { {}, "Snap taps to" };

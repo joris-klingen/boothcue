@@ -30,6 +30,23 @@ with non-trivial commits. The plan and open backlog are in [TODO.md](TODO.md).
 
 ## Changelog
 
+- **Display rework** (after v0.1.0):
+  - a line is shown ahead of its first word (`DisplaySettings::leadBars`,
+    1 bar by default, at most half the time since the line before it; decided
+    in `buildScene`, editor: *Show a line ahead by*), dimmer and with a run-up
+    bar; a third lyric row (the line after the next);
+  - no header (part name, next part, bar.beat, PLAY / REC, loop pass): from
+    the top the parts, the ticker, the lyrics. The count-in is off unless
+    switched on, and never sent to the phones;
+  - ticker: one chord size for the whole song, repeated chords not written
+    again, the bass note only where it differs from the root, bar lines as the
+    only vertical lines, the parts as a band in full colour;
+  - colours: Live's own clip palette (from `pushbase/colors.pyc` in Live
+    12.4; the old values were sampled from a screenshot), and parts are drawn
+    in that colour everywhere (a part that is over is veiled, not greyed).
+  Checked with `song-check` (lead), `plugin-smoke` (state) and renders of a
+  real set; not yet tried in Live.
+
 - **Song folder** (after v0.1.0): *Link song...* follows `lyrics.txt` and
   `chords.txt` of a song's folder in the songbook (bovenburen_manager) and
   writes the tapped starts next to them as `timings.txt`; saved with the set.

@@ -133,6 +133,11 @@ namespace
         out.push_back ({ "Just tapped (note along the bottom, 1.5 s)", song, at (33.0), normal,
                          "\"Every window glowing soft and low\" at 9.2.1" });
 
+        out.push_back ({ "Next line shown a bar ahead: run-up half way", song, at (38.0, true, true), normal });
+        DisplaySettings noLead = normal;
+        noLead.leadBars = 0.0;
+        out.push_back ({ "Same moment, 'show a line ahead' off", song, at (38.0, true, true), noLead });
+
         DisplaySettings noLyrics;
         noLyrics.showLyrics = false;
         noLyrics.showChords = false;

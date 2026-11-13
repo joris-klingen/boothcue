@@ -38,6 +38,15 @@ namespace
     };
     const double kEntryChoices[] = { 1.0, 2.0, 4.0, 8.0 };
 
+    struct LeadChoice { const char* name; double bars; };
+    const LeadChoice kLeadChoices[] = {
+        { "Nothing (at its first word)", 0.0 },
+        { "A quarter bar", 0.25 },
+        { "Half a bar", 0.5 },
+        { "1 bar", 1.0 },
+        { "2 bars", 2.0 },
+    };
+
     constexpr int kLeftWidth = 330;
 }
 
@@ -235,8 +244,14 @@ BoothCueAudioProcessorEditor::BoothCueAudioProcessorEditor (BoothCueAudioProcess
                           static_cast<int> (bars));
     entryBox.setTooltip ("Only lines that come after a rest at least this long get a count-in");
     entryBox.onChange = [this] { pushSettings(); };
+    id = 1;
+    for (const auto& c : kLeadChoices)
+        leadBox.addItem (c.name, id++);
+    leadBox.setTooltip ("How long before its first word a line takes the big position, so it can be read ahead. "
+                        "Never more than half the time since the line before it; counted-in lines follow the count");
+    leadBox.onChange = [this] { pushSettings(); };
 
-    for (auto* l : { &sizeLabel, &countLabel, &entryLabel })
+    for (auto* l : { &sizeLabel, &countLabel, &entryLabel, &leadLabel })
     {
         l->setColour (juce::Label::textColourId, theme::dim);
         addAndMakeVisible (*l);
@@ -244,6 +259,7 @@ BoothCueAudioProcessorEditor::BoothCueAudioProcessorEditor (BoothCueAudioProcess
     addAndMakeVisible (sizeSlider);
     addAndMakeVisible (countBox);
     addAndMakeVisible (entryBox);
+    addAndMakeVisible (leadBox);
 
     // Lyrics.
     lyricsEditor.setMultiLine (true, true);
@@ -411,6 +427,12 @@ void BoothCueAudioProcessorEditor::pullSettings()
     entryBox.setSelectedId (entryId, juce::dontSendNotification);
     entryBox.setEnabled (s.count.enabled);
 
+    int leadId = 1;
+    for (int i = 0; i < static_cast<int> (std::size (kLeadChoices)); ++i)
+        if (s.leadBars >= kLeadChoices[i].bars - 1.0e-6)
+            leadId = i + 1;
+    leadBox.setSelectedId (leadId, juce::dontSendNotification);
+
     const auto& t = processor.getTapSettings();
     snapBox.setSelectedId (t.snapBeats >= 0.5 ? 3 : t.snapBeats >= 0.25 ? 2 : 1, juce::dontSendNotification);
     latencySlider.setValue (t.latencyMs, juce::dontSendNotification);
@@ -433,6 +455,9 @@ void BoothCueAudioProcessorEditor::pushSettings()
     }
     if (entryBox.getSelectedId() > 0)
         s.count.entryGapBars = entryBox.getSelectedId();
+    const int leadIndex = leadBox.getSelectedId() - 1;
+    if (leadIndex >= 0 && leadIndex < static_cast<int> (std::size (kLeadChoices)))
+        s.leadBars = kLeadChoices[leadIndex].bars;
 
     entryBox.setEnabled (s.count.enabled);
     processor.setDisplaySettings (s);
@@ -923,6 +948,10 @@ void BoothCueAudioProcessorEditor::resized()
     auto entry = left.removeFromTop (26);
     entryLabel.setBounds (entry.removeFromLeft (180));
     entryBox.setBounds (entry);
+    left.removeFromTop (6);
+    auto lead = left.removeFromTop (26);
+    leadLabel.setBounds (lead.removeFromLeft (150));
+    leadBox.setBounds (lead);
     left.removeFromTop (6);
 
     tapTitle = left.removeFromTop (22);

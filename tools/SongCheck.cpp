@@ -559,6 +559,38 @@ namespace
         EXPECT (s.section == 2 && s.currentLine == "ch b" && s.nextLine == "ch c");
         EXPECT (s.countdown.kind == Countdown::Kind::none);
 
+        // Read ahead (leadBars, 1 bar by default): "ch c" starts at 64 and takes
+        // the big position a bar before, with the run-up to its first word.
+        s = buildScene (song, at (59.9), ds);
+        EXPECT (s.currentLine == "ch b" && ! s.lineAhead);
+        s = buildScene (song, at (61), ds);
+        EXPECT (s.lineAhead && s.currentLine == "ch c" && s.nextCue == s.currentCue + 1);
+        EXPECT (s.laterLine == textOf (song, s.nextCue + 1) && ! s.laterLine.empty() && s.laterLine != s.nextLine);
+        EXPECT (near (s.beatsToLine, 3) && near (s.lineRunUp, 0.25) && near (s.beatsToNextLine, 11));
+        s = buildScene (song, at (64), ds);
+        EXPECT (! s.lineAhead && s.currentLine == "ch c");
+        // Never more than half the time since the line before it started (8 beats here).
+        ds.leadBars = 2.0;
+        s = buildScene (song, at (59.9), ds);
+        EXPECT (s.currentLine == "ch b" && ! s.lineAhead);
+        s = buildScene (song, at (62), ds);
+        EXPECT (s.lineAhead && s.currentLine == "ch c" && near (s.lineRunUp, 0.5));
+        // Off: a line comes at its first word.
+        ds.leadBars = 0.0;
+        s = buildScene (song, at (63.5), ds);
+        EXPECT (s.currentLine == "ch b" && ! s.lineAhead && near (s.lineRunUp, 0));
+        ds.leadBars = 1.0;
+        // An entry that is counted in is announced by the count, not shown ahead...
+        s = buildScene (song, at (14), ds);
+        EXPECT (s.countdown.kind == Countdown::Kind::beats && s.currentLine.empty() && ! s.lineAhead && s.nextLine == "v1 a");
+        // ...unless the count-in is off.
+        ds.count.enabled = false;
+        s = buildScene (song, at (14), ds);
+        EXPECT (s.lineAhead && s.currentLine == "v1 a" && near (s.beatsToLine, 2) && near (s.lineRunUp, 0.5));
+        s = buildScene (song, at (4), ds);
+        EXPECT (! s.lineAhead && s.currentLine.empty() && s.nextLine == "v1 a");
+        ds.count.enabled = true;
+
         // In the gap before the Outro: no section, no line, nothing to come.
         s = buildScene (song, at (146), ds);
         EXPECT (s.section == -1 && s.nextSection == 5 && s.currentCue == -1 && s.nextCue == -1);

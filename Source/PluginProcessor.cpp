@@ -52,6 +52,7 @@ namespace
     const juce::Identifier kCount     { "count" };
     const juce::Identifier kCountBars { "countBars" };
     const juce::Identifier kEntryGap  { "entryGap" };
+    const juce::Identifier kLeadBars  { "leadBars" };
     const juce::Identifier kOpen      { "open" };
     const juce::Identifier kPlacement { "placement" };
     const juce::Identifier kTap       { "Tap" };
@@ -86,6 +87,9 @@ BoothCueAudioProcessor::BoothCueAudioProcessor()
 {
     song.setTimeSig (TimeSig());   // until the host says otherwise
     updateStateSnapshot();
+    // No count-in unless it is switched on: the band knows the songs, and a
+    // line shown ahead (with the two lines after it) is reminder enough.
+    displaySettings.count.enabled = false;
     liveFeed = std::make_unique<LiveFeed>();
     startTimerHz (kTimerHz);
 }
@@ -265,7 +269,7 @@ void BoothCueAudioProcessor::timerCallback()
 }
 
 // The phones get everything the display can show (parts, lyrics, full chord
-// names), whatever the singer display's own toggles are. Sent when it changes,
+// names), whatever the singer display's own toggles are, but never a count-in. Sent when it changes,
 // and once a second anyway so the manager knows BoothCue is still there.
 void BoothCueAudioProcessor::postLiveScene()
 {
@@ -274,6 +278,7 @@ void BoothCueAudioProcessor::postLiveScene()
     auto settings = displaySettings;
     settings.showSongPart = settings.showLyrics = settings.showChords = true;
     settings.showBassNote = false;
+    settings.count.enabled = false;   // the band knows the songs: a line shown ahead is reminder enough
     const auto t = transport.read();
     const auto json = LiveFeed::sceneJson (buildScene (song, t, settings), song, t,
                                            songFolder.getFileName(), getTrackName());
@@ -753,6 +758,7 @@ void BoothCueAudioProcessor::setDisplaySettings (const DisplaySettings& s)
     displaySettings.fontScale = juce::jlimit (0.5f, 2.0f, s.fontScale);
     displaySettings.count.countInBars = juce::jlimit (0, 8, s.count.countInBars);
     displaySettings.count.entryGapBars = juce::jlimit (0.5, 32.0, s.count.entryGapBars);
+    displaySettings.leadBars = juce::jlimit (0.0, 2.0, s.leadBars);
     ++contentVersion;
     updateStateSnapshot();
 }
@@ -868,6 +874,7 @@ void BoothCueAudioProcessor::updateStateSnapshot()
         display.setProperty (kCount, d.count.enabled, nullptr);
         display.setProperty (kCountBars, d.count.countInBars, nullptr);
         display.setProperty (kEntryGap, d.count.entryGapBars, nullptr);
+        display.setProperty (kLeadBars, d.leadBars, nullptr);
         display.setProperty (kOpen, isDisplayVisible(), nullptr);
         display.setProperty (kPlacement, displayPlacement, nullptr);
         state.appendChild (display, nullptr);
@@ -1039,13 +1046,15 @@ void BoothCueAudioProcessor::applyState (const juce::ValueTree& state)
         ds.showChords   = d.getProperty (kShowChord, ds.showChords);
         ds.showBassNote = d.getProperty (kShowBass, ds.showBassNote);
         ds.fontScale    = static_cast<float> (d.getProperty (kScale, ds.fontScale));
-        ds.count.enabled      = d.getProperty (kCount, ds.count.enabled);
+        ds.count.enabled      = d.getProperty (kCount, false);   // off unless it was switched on
         ds.count.countInBars  = d.getProperty (kCountBars, ds.count.countInBars);
         ds.count.entryGapBars = d.getProperty (kEntryGap, ds.count.entryGapBars);
+        ds.leadBars = d.getProperty (kLeadBars, ds.leadBars);
         displaySettings = ds;
         displaySettings.fontScale = juce::jlimit (0.5f, 2.0f, ds.fontScale);
         displaySettings.count.countInBars = juce::jlimit (0, 8, ds.count.countInBars);
         displaySettings.count.entryGapBars = juce::jlimit (0.5, 32.0, ds.count.entryGapBars);
+        displaySettings.leadBars = juce::jlimit (0.0, 2.0, ds.leadBars);
 
         const auto t = state.getChildWithName (kTap);
         tapSettings.snapBeats = juce::jlimit (0.0, 4.0, static_cast<double> (t.getProperty (kSnap, 0.0)));

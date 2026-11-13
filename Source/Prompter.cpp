@@ -118,6 +118,31 @@ PrompterScene buildScene (const Song& song, const TransportState& t, const Displ
         if (s.nextCue >= 0)
             s.beatsToNextLine = song.cues()[static_cast<std::size_t> (s.nextCue)].ppq - t.ppq;
         s.countdown = countdownAt (song, t.ppq, s.sig, settings.count);
+
+        // Read ahead: the next line takes the big position a little before
+        // its first word. Not for an entry that is being counted in (the
+        // count announces it, with the line under it).
+        if (settings.leadBars > 0.0 && s.nextCue >= 0 && s.countdown.kind == Countdown::Kind::none)
+        {
+            const auto& cues = song.cues();
+            const auto next = static_cast<std::size_t> (s.nextCue);
+            double lead = settings.leadBars * s.sig.barLength();
+            if (next > 0)
+                lead = std::min (lead, 0.5 * (cues[next].ppq - cues[next - 1].ppq));
+            if (lead > kEps && s.beatsToNextLine <= lead + kEps)
+            {
+                s.lineAhead   = true;
+                s.beatsToLine = s.beatsToNextLine;
+                s.lineRunUp   = std::clamp (1.0 - s.beatsToLine / lead, 0.0, 1.0);
+                s.currentCue  = s.nextCue;
+                s.nextCue     = next + 1 < cues.size() ? s.nextCue + 1 : -1;
+                s.currentLine = lineText (song, s.currentCue);
+                s.nextLine    = lineText (song, s.nextCue);
+                s.beatsToNextLine = s.nextCue >= 0 ? cues[next + 1].ppq - t.ppq : 0.0;
+            }
+        }
+        if (s.nextCue >= 0 && static_cast<std::size_t> (s.nextCue) + 1 < song.cues().size())
+            s.laterLine = lineText (song, s.nextCue + 1);
     }
     return s;
 }

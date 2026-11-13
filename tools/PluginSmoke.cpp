@@ -605,6 +605,7 @@ namespace
             d.count.enabled = true;
             d.count.countInBars = 4;
             d.count.entryGapBars = 2.0;
+            d.leadBars = 0.5;
             p.setDisplaySettings (d);
             BoothCueAudioProcessor::TapSettings t;
             t.snapBeats = 0.5;
@@ -634,6 +635,7 @@ namespace
         EXPECT (! d.showSongPart && d.showLyrics && ! d.showChords && d.showBassNote);
         EXPECT (std::abs (d.fontScale - 1.4f) < 1e-5f);
         EXPECT (d.count.enabled && d.count.countInBars == 4 && std::abs (d.count.entryGapBars - 2.0) < 1e-9);
+        EXPECT (std::abs (d.leadBars - 0.5) < 1e-9);
         EXPECT (std::abs (q.getTapSettings().snapBeats - 0.5) < 1e-9 && std::abs (q.getTapSettings().latencyMs - 45.0) < 1e-9);
         EXPECT (q.getEditorSize() == juce::Point<int> (1200, 800));
         EXPECT (q.isDisplayVisible());   // it was open: it opens again

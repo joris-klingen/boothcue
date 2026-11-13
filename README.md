@@ -3,8 +3,8 @@
 **The lyrics, the chords and where you are, on the singer's screen.** BoothCue
 is a plugin for tracking in Ableton Live (VST3 + Standalone, JUCE 8, macOS
 first). It reads the song structure and the MIDI from your Live set, and shows
-the singer, on a second monitor or an iPad, the part you're in, the lyric line
-to sing, the chords coming up and a count-in to the next entry. With the lyrics
+the singer, on a second monitor or an iPad, the part you're in, the chords
+coming up and the lyric line to sing, a little before its first word. With the lyrics
 switched off, the same window works for a keys or guitar player.
 
 ![The singer display in the first chorus](docs/display.png)
@@ -16,14 +16,21 @@ switched off, the same window works for a keys or guitar player.
   clip is a part, its name is the part's name, its colour is the part's colour
   on the display), and the notes of every MIDI track for the chords. BoothCue
   only reads the set; it never writes to it.
-- **Three zoom levels on one screen.**
-  - The whole song as coloured parts, with the playhead.
-  - A ticker of about 16 bars around the playhead with the chords at their
-    changes: the current chord in yellow, the bass note under each chord, marks
-    where lyric lines start, and the loop.
-  - Now: the line being sung, large (ordinary lines stay on one line on a 10"
-    iPad), the next line in grey, and the count-in to the next entry
-    ("2 bars", "1 bar", then a big 4-3-2-1).
+- **Three zoom levels on one screen**, and nothing else (no bar counter, no
+  PLAY / REC sign).
+  - The whole song as parts in the colours their clips have in Live, with the
+    playhead. The part that is playing stands taller; parts that are over are
+    darker.
+  - A ticker of about 16 bars around the playhead: the parts as a coloured
+    band, and the chords at their changes, all one size. The current chord is
+    yellow, a chord that is only repeated is not written again, a bass note is
+    shown only where it is not the chord's root, dots mark where lyric lines
+    start.
+  - The lyrics in three rows: the line to sing, large (ordinary lines stay on
+    one line on a 10" iPad), and the two lines after it. A line takes the large
+    row a little before its first word (1 bar by default), dimmer, with a bar
+    under it that fills up to the moment to start. A count-in to the next
+    entry ("2 bars", "1 bar", then a big 4-3-2-1) can be switched on.
 - **Toggles** for song part, lyrics, chords and bass note, and a text size.
 - **Chords detected from the set's MIDI.** BoothCue works out which tracks
   carry chords, which one is the bass and which ones are melodies (from the
@@ -79,8 +86,8 @@ plug-ins in Live (Settings > Plug-Ins).
    the last tap.
 7. **Phones for the band** (optional): with the [Bovenburen manager](https://github.com/joris-klingen/bovenburen_manager)
    running on this Mac (with `--lan`), BoothCue sends what the singer
-   display shows to it, and the band's phones follow along: part, count-in,
-   the line being sung and the next one, chords, bar.beat. *Phones...* shows
+   display shows to it, and the band's phones follow along: the parts, the
+   chords, and the line to sing with the two after it (no count-in). *Phones...* shows
    the QR code for that live view; scanning it on the same Wi-Fi opens it,
    and the phone is remembered after that. The QR encoder is BoothCue's own
    (`Source/QrCode.{h,cpp}`, plain C++); the feed is `Source/LiveFeed.{h,cpp}`.
@@ -163,7 +170,8 @@ The link is saved with the set. *Unlink song* stops following; what is shown sta
 |---------|---------|
 | Show | Song part · Lyrics · Chords · Bass note |
 | Text size | 50 - 200 % |
-| Count-in | Off · Last bar only (4-3-2-1) · 1, 2 or 4 bars, then 4-3-2-1 |
+| Count-in | Off (the default) · Last bar only (4-3-2-1) · 1, 2 or 4 bars, then 4-3-2-1 |
+| Show a line ahead by | Nothing · a quarter bar · half a bar · 1 bar (the default) · 2 bars: how long before its first word a line takes the large row. Never more than half the time since the line before it |
 | Count lines after a rest of | 1 · 2 · 4 · 8 bars (a line after such a rest is counted in) |
 | Snap taps to | No snap · 16th notes · 8th notes |
 | Tap latency | 0 - 200 ms, taken off every tap |
