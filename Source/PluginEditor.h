@@ -140,6 +140,7 @@ private:
     juce::ToggleButton showLyrics { "Lyrics" };
     juce::ToggleButton showChords { "Chords" };
     juce::ToggleButton showBass   { "Bass note" };
+    juce::ToggleButton showPara   { "Whole paragraph" };
     juce::Label  sizeLabel { {}, "Text size" };
     juce::Slider sizeSlider;
     juce::Label  countLabel { {}, "Count-in" };

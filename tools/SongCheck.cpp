@@ -1003,6 +1003,42 @@ namespace
         ds.showChords = false;
         EXPECT (! buildScene (song, at (26), ds).hasChords);
         EXPECT (! buildScene (makeSong(), at (26), DisplaySettings()).hasChords);
+
+        // The lyrics a paragraph at a time: the lines between two blank lines.
+        {
+            Song ps;
+            ps.setSections ({ sec ("Verse", 0, 32), sec ("Chorus", 32, 48) });
+            auto blocks = parseLyrics ("[Verse]\nOne\nTwo\n\nThree\nFour\nFive\n\n[Chorus]\nSix\n");
+            EXPECT (blocks.size() == 2 && blocks[0].lines.size() == 5);
+            EXPECT (blocks[0].lines[0].paraStart && ! blocks[0].lines[1].paraStart && blocks[0].lines[2].paraStart);
+            EXPECT (lyricsToText (blocks) == "[Verse]\nOne\nTwo\n\nThree\nFour\nFive\n\n[Chorus]\nSix\n");
+            ps.setBlocks (blocks);
+            DisplaySettings para;
+            para.paragraph = true;
+            para.leadBars = 0.0;
+            const auto& cues = ps.cues();
+            EXPECT (cues.size() == 6);
+            auto scene = buildScene (ps, at (cues[1].ppq + 0.1), para);
+            EXPECT (scene.paragraph == std::vector<std::string> ({ "One", "Two" }) && scene.paragraphLine == 1);
+            scene = buildScene (ps, at (cues[3].ppq + 0.1), para);
+            EXPECT (scene.paragraph == std::vector<std::string> ({ "Three", "Four", "Five" }) && scene.paragraphLine == 1);
+            scene = buildScene (ps, at (cues[5].ppq + 0.1), para);
+            EXPECT (scene.paragraph == std::vector<std::string> ({ "Six" }) && scene.paragraphLine == 0);
+            EXPECT (buildScene (ps, at (cues[3].ppq + 0.1), DisplaySettings()).paragraph.empty());
+        }
+
+        // The ticker's runs: a repeated chord is written once, but every part
+        // starts with its chord, also when it is the one before.
+        song.setChords ({ span (16, 24, "C"), span (24, 32, "C"), span (32, 56, "Am/E"), span (56, 80, "F"), span (80, 96, "F") },
+                        Key { 0, false });
+        auto runs = chordRuns (song, false);
+        EXPECT (runs.size() == 5);
+        EXPECT (runs[0].name == "C" && near (runs[0].start, 16) && near (runs[0].end, 32));
+        EXPECT (runs[1].name == "Am/E" && near (runs[1].end, 48));                               // up to the chorus
+        EXPECT (runs[2].name == "Am/E" && near (runs[2].start, 48) && near (runs[2].end, 56));   // and again in it
+        EXPECT (runs[3].name == "F" && near (runs[3].end, 80) && runs[4].name == "F" && near (runs[4].start, 80));
+        runs = chordRuns (song, true);
+        EXPECT (runs[1].name == "Am" && runs[1].bass == "E" && runs[0].bass.empty());
     }
     std::string chordAtName (const std::vector<ChordSpan>& chords, double t, const Key& key = Key { 10, true })
     {

@@ -43,6 +43,9 @@ struct LyricLine
     // into the offset once the block is linked to a section (Song::rebuild).
     bool hasAt = false;
     int atBar = 1, atBeat = 1, atSixteenth = 1;
+    // The first line after a blank line in the text: the paragraphs of a
+    // part (the display can show the lyrics a paragraph at a time).
+    bool paraStart = false;
     bool timed() const { return offset >= 0.0; }
 };
 

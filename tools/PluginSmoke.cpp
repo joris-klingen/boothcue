@@ -883,6 +883,10 @@ namespace
             EXPECT (v["parts"][0]["color"].toString().startsWith ("#") && v["parts"][0]["color"].toString().length() == 7);
             EXPECT (static_cast<bool> (v["playing"]) && static_cast<int> (v["bar"]) == 13);
             EXPECT (v["partName"].toString().isNotEmpty() && static_cast<int> (v["part"]) >= 0);
+            // The phone's ticker: every chord run as [start, end, name], in order.
+            EXPECT (v["chords"].size() > 0 && v["chords"][0].size() == 3 && v["chords"][0][2].toString().isNotEmpty());
+            for (int i = 1; i < v["chords"].size(); ++i)
+                EXPECT (static_cast<double> (v["chords"][i][0]) >= static_cast<double> (v["chords"][i - 1][1]) - 1.0e-6);
             pump (50);
         }
 

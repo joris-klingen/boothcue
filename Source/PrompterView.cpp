@@ -113,7 +113,8 @@ bool PrompterView::keyPressed (const juce::KeyPress& key)
             w->setFullScreen (false);
         return true;
     }
-    if (key.getTextCharacter() == 't' || key.getTextCharacter() == 'T' || key == juce::KeyPress::spaceKey)
+    // Not space: that is Live's play / stop.
+    if (key.getTextCharacter() == 't' || key.getTextCharacter() == 'T')
     {
         if (onTap)
             onTap();

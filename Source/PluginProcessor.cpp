@@ -53,6 +53,8 @@ namespace
     const juce::Identifier kCountBars { "countBars" };
     const juce::Identifier kEntryGap  { "entryGap" };
     const juce::Identifier kLeadBars  { "leadBars" };
+    const juce::Identifier kParagraph { "paragraph" };
+    const juce::Identifier kParaStart { "para" };
     const juce::Identifier kOpen      { "open" };
     const juce::Identifier kPlacement { "placement" };
     const juce::Identifier kTap       { "Tap" };
@@ -438,6 +440,8 @@ void BoothCueAudioProcessor::applyReport (const SetWatcher::Report& report)
             if (! c.bassTracks.empty())
                 text << ", bass from " << names (c.bassTracks);
             text << " - key " << str (keyName (c.result.key)) << ", " << juce::String (c.result.spans.size()) << " chords";
+            if (c.fromMuted)
+                text << " (muted tracks: nothing else in the set has notes)";
             linkStatus.chordSummary = text;
         }
     }
@@ -583,7 +587,7 @@ void BoothCueAudioProcessor::applyFolderLyrics()
         {
             const auto& x = now[b].lines[l];
             const auto& y = blocks[b].lines[l];
-            same = x.text == y.text && juce::exactlyEqual (x.offset, y.offset) && x.hasAt == y.hasAt
+            same = x.text == y.text && x.paraStart == y.paraStart && juce::exactlyEqual (x.offset, y.offset) && x.hasAt == y.hasAt
                    && (! x.hasAt || (x.atBar == y.atBar && x.atBeat == y.atBeat && x.atSixteenth == y.atSixteenth));
         }
     }
@@ -969,6 +973,7 @@ void BoothCueAudioProcessor::updateStateSnapshot()
         display.setProperty (kCountBars, d.count.countInBars, nullptr);
         display.setProperty (kEntryGap, d.count.entryGapBars, nullptr);
         display.setProperty (kLeadBars, d.leadBars, nullptr);
+        display.setProperty (kParagraph, d.paragraph, nullptr);
         display.setProperty (kOpen, isDisplayVisible(), nullptr);
         display.setProperty (kPlacement, displayPlacement, nullptr);
         state.appendChild (display, nullptr);
@@ -1020,6 +1025,8 @@ void BoothCueAudioProcessor::updateStateSnapshot()
                 juce::ValueTree line (kLine);
                 line.setProperty (kText, str (l.text), nullptr);
                 line.setProperty (kOffset, l.offset, nullptr);
+                if (l.paraStart)
+                    line.setProperty (kParaStart, true, nullptr);
                 block.appendChild (line, nullptr);
             }
             lyrics.appendChild (block, nullptr);
@@ -1087,8 +1094,11 @@ void BoothCueAudioProcessor::applyState (const juce::ValueTree& state)
         block.header = b[kHeader].toString().toStdString();
         for (const auto& l : b)
             if (l.hasType (kLine))
+            {
                 block.lines.push_back ({ l[kText].toString().toStdString(),
                                          l.hasProperty (kOffset) ? static_cast<double> (l[kOffset]) : -1.0 });
+                block.lines.back().paraStart = l.getProperty (kParaStart, false);
+            }
         blocks.push_back (std::move (block));
     }
     song.setBlocks (std::move (blocks));
@@ -1144,6 +1154,7 @@ void BoothCueAudioProcessor::applyState (const juce::ValueTree& state)
         ds.count.countInBars  = d.getProperty (kCountBars, ds.count.countInBars);
         ds.count.entryGapBars = d.getProperty (kEntryGap, ds.count.entryGapBars);
         ds.leadBars = d.getProperty (kLeadBars, ds.leadBars);
+        ds.paragraph = d.getProperty (kParagraph, false);
         displaySettings = ds;
         displaySettings.fontScale = juce::jlimit (0.5f, 2.0f, ds.fontScale);
         displaySettings.count.countInBars = juce::jlimit (0, 8, ds.count.countInBars);

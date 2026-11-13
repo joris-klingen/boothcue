@@ -123,6 +123,11 @@ juce::String LiveFeed::sceneJson (const PrompterScene& s, const Song& song, cons
         o->setProperty ("chord", str (s.chord));
         o->setProperty ("nextChord", str (s.nextChord));
         o->setProperty ("chordUnsure", s.chordUnsure);
+        // The whole song's chords for the phone's ticker: [start, end, name].
+        juce::Array<juce::var> chords;
+        for (const auto& r : chordRuns (song, false))
+            chords.add (juce::Array<juce::var> { r.start, r.end, str (r.name) });
+        o->setProperty ("chords", chords);
     }
     return juce::JSON::toString (root, true);
 }

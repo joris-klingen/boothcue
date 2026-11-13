@@ -405,6 +405,7 @@ std::vector<LyricBlock> parseLyrics (const std::string& input, LyricImportReport
         stanzaHeader.emplace (key, std::make_pair (blocks.back().header, stanzaOpensBlock));
 
         // Lines: join pickups, expand "x2".
+        const auto stanzaFirst = blocks.back().lines.size();
         for (std::size_t l = 0; l < lines.size(); ++l)
         {
             auto text = lines[l];
@@ -436,6 +437,8 @@ std::vector<LyricBlock> parseLyrics (const std::string& input, LyricImportReport
             for (int n = 0; n < times; ++n)
                 blocks.back().lines.push_back (line);
         }
+        if (blocks.back().lines.size() > stanzaFirst)
+            blocks.back().lines[stanzaFirst].paraStart = true;
     }
     settlePending();
 
@@ -459,6 +462,8 @@ std::string lyricsToTimedText (const Song& song)
         for (std::size_t l = 0; l < blocks[b].lines.size(); ++l)
         {
             const auto& line = blocks[b].lines[l];
+            if (line.paraStart && l > 0 && ! (b == 0 && blocks[b].header.empty()))
+                out += '\n';   // as lyricsToText: the paragraphs of a part
             if (line.timed() && section >= 0)
                 out += "@" + formatPosition (song.sections()[static_cast<std::size_t> (section)].start + line.offset,
                                              song.timeSig()) + " ";
@@ -481,8 +486,14 @@ std::string lyricsToText (const std::vector<LyricBlock>& blocks)
             out += '\n';
         if (! b.header.empty())
             out += '[' + b.header + "]\n";
-        for (const auto& l : b.lines)
-            out += l.text + '\n';
+        // The paragraphs of a part: a blank line between them. Not in opening
+        // lines without a header (a single line set apart would read as a title).
+        for (std::size_t l = 0; l < b.lines.size(); ++l)
+        {
+            if (b.lines[l].paraStart && l > 0 && ! (i == 0 && b.header.empty()))
+                out += '\n';
+            out += b.lines[l].text + '\n';
+        }
     }
     return out;
 }

@@ -230,13 +230,14 @@ BoothCueAudioProcessorEditor::BoothCueAudioProcessorEditor (BoothCueAudioProcess
                              "Bovenburen manager on this Mac (started with phone access, --lan).");
     addAndMakeVisible (phonesButton);
 
-    for (auto* t : { &showPart, &showLyrics, &showChords, &showBass })
+    for (auto* t : { &showPart, &showLyrics, &showChords, &showBass, &showPara })
     {
         t->onClick = [this] { pushSettings(); };
         addAndMakeVisible (*t);
     }
     showChords.setTooltip ("Previous, current and next chord, detected from the set's MIDI tracks");
     showBass.setTooltip ("The bass note under the chord, on its own");
+    showPara.setTooltip ("The lyrics a paragraph at a time (the lines between two blank lines) instead of line by line");
 
     sizeSlider.setSliderStyle (juce::Slider::LinearHorizontal);
     sizeSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 20);
@@ -350,7 +351,7 @@ BoothCueAudioProcessorEditor::BoothCueAudioProcessorEditor (BoothCueAudioProcess
 
     // Tap-along.
     tapButton.onClick = [this] { processor.tap(); timerCallback(); };
-    tapButton.setTooltip ("Stamp the marked line at the playhead (T or space in the singer display)");
+    tapButton.setTooltip ("Stamp the marked line at the playhead (T in the singer display)");
     tapButton.setColour (juce::TextButton::buttonColourId, theme::count.withAlpha (0.85f));
     tapButton.setColour (juce::TextButton::textColourOffId, theme::background);
     undoButton.onClick = [this] { processor.undo(); };
@@ -429,6 +430,7 @@ void BoothCueAudioProcessorEditor::pullSettings()
     showLyrics.setToggleState (s.showLyrics, juce::dontSendNotification);
     showChords.setToggleState (s.showChords, juce::dontSendNotification);
     showBass.setToggleState (s.showBassNote, juce::dontSendNotification);
+    showPara.setToggleState (s.paragraph, juce::dontSendNotification);
     sizeSlider.setValue (s.fontScale, juce::dontSendNotification);
 
     int countId = 1;
@@ -465,6 +467,7 @@ void BoothCueAudioProcessorEditor::pushSettings()
     s.showLyrics   = showLyrics.getToggleState();
     s.showChords   = showChords.getToggleState();
     s.showBassNote = showBass.getToggleState();
+    s.paragraph    = showPara.getToggleState();
     s.fontScale    = static_cast<float> (sizeSlider.getValue());
 
     const int countIndex = countBox.getSelectedId() - 1;
@@ -515,11 +518,12 @@ void BoothCueAudioProcessorEditor::syncSelectionToCursor()
 bool BoothCueAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
 {
     // Only when typing isn't going to the lyrics box. Live passes few keys to
-    // plugin windows; the singer display always takes T / space.
+    // plugin windows; the singer display always takes T. Space is never
+    // taken: it is Live's play / stop.
     if (lyricsEditor.hasKeyboardFocus (true))
         return false;
     const auto c = key.getTextCharacter();
-    if (c == 't' || c == 'T' || key == juce::KeyPress::spaceKey)
+    if (c == 't' || c == 'T')
     {
         processor.tap();
         timerCallback();
@@ -1042,12 +1046,13 @@ void BoothCueAudioProcessorEditor::resized()
         phonesButton.setBounds (row);
     }
     left.removeFromTop (8);
-    auto toggles = left.removeFromTop (48);
+    auto toggles = left.removeFromTop (72);
     auto toggleLeft = toggles.removeFromLeft (toggles.getWidth() / 2 - 20);
     showPart.setBounds (toggleLeft.removeFromTop (24));
-    showLyrics.setBounds (toggleLeft);
+    showLyrics.setBounds (toggleLeft.removeFromTop (24));
+    showPara.setBounds (toggleLeft);
     showChords.setBounds (toggles.removeFromTop (24));
-    showBass.setBounds (toggles);
+    showBass.setBounds (toggles.removeFromTop (24));
     left.removeFromTop (6);
 
     auto size = left.removeFromTop (26);

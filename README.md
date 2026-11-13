@@ -86,14 +86,14 @@ plug-ins in Live (Settings > Plug-Ins).
    use it as a second display (Sidecar, or a display app) and put the window
    there.
 6. **Time the lyrics**: start playback, click the first line in the list and
-   press **Tap** (or **T** / space in the singer display) on the first word of
+   press **Tap** (or **T** in the singer display) on the first word of
    each line. The tap lands on the playhead at that moment, minus the tap
    latency and snapped to the grid you chose. Backspace in the display undoes
    the last tap.
 7. **Phones for the band** (optional): with the [Bovenburen manager](https://github.com/joris-klingen/bovenburen_manager)
    running on this Mac (with `--lan`), BoothCue sends what the singer
    display shows to it, and the band's phones follow along: the parts, the
-   chords, and the line to sing with the two after it (no count-in). *Phones...* shows
+   chord ticker, and the line to sing with the two after it (no count-in). *Phones...* shows
    the QR code for that live view; scanning it on the same Wi-Fi opens it,
    and the phone is remembered after that. The QR encoder is BoothCue's own
    (`Source/QrCode.{h,cpp}`, plain C++); the feed is `Source/LiveFeed.{h,cpp}`.
@@ -186,6 +186,7 @@ The link is saved with the set. *Unlink song* stops following; what is shown sta
 | Setting | Options |
 |---------|---------|
 | Show | Song part · Lyrics · Chords · Bass note |
+| Whole paragraph | The lyrics a paragraph at a time (the lines between two blank lines), the line being sung bright, instead of line by line. Enough on a large second screen such as an iPad. |
 | Text size | 50 - 200 % |
 | Count-in | Off (the default) · Last bar only (4-3-2-1) · 1, 2 or 4 bars, then 4-3-2-1 |
 | Show a line ahead by | Nothing · a quarter bar · half a bar · 1 bar (the default) · 2 bars: how long before its first word a line takes the large row. Never more than half the time since the line before it |

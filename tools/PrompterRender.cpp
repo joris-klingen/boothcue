@@ -235,6 +235,7 @@ int renderSet (int argc, char* argv[])
         t.ppq = ppq;
         t.bpm = 120.0;
         DisplaySettings settings;
+        settings.paragraph = std::getenv ("BOOTHCUE_PARAGRAPH") != nullptr;   // the lyrics a paragraph at a time
         juce::Image image (juce::Image::RGB, w, h, true);
         juce::Graphics ig (image);
         PrompterPainter painter;

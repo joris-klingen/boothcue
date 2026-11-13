@@ -224,6 +224,17 @@ namespace
         // parts / length tracks are left out.
         const auto chords = chordsFromSet (r, 4.0);
         EXPECT (chords.anyNotes);
+        EXPECT (! chords.fromMuted);
+        {
+            // Only the muted track has notes (the others are audio by now): it is used after all.
+            auto printed = r;
+            for (auto& t : printed.midiTracks)
+                if (! t.muted)
+                    t.notes.clear();
+            const auto fromMuted = chordsFromSet (printed, 4.0);
+            EXPECT (fromMuted.anyNotes && fromMuted.fromMuted && ! fromMuted.result.spans.empty());
+            EXPECT (chordName (fromMuted.result.spans.front().chord, fromMuted.result.key) == "Db");
+        }
         EXPECT (chords.chordTracks == std::vector<std::string> { "Keys" });
         EXPECT (chords.bassTracks == std::vector<std::string> { "Bass" });
         auto at = [&chords] (double t)

@@ -13,7 +13,7 @@ with non-trivial commits. The plan and open backlog are in [TODO.md](TODO.md).
 | Chord detection | `Chords.{h,cpp}`, `SetChords.{h,cpp}` | Notes below MIDI 33 dropped first (sound selectors, keyswitches). Track roles from names (bass, vocal / melody, drums and helpers ignored) or the notes (polyphony, register, steps vs leaps). Embellishment filtering on note starts with tolerance; passing notes decided in two passes (pass-1 weight x0.3); suspensions resolving under a held voice; ring-on up to the bar line. Weights per beat slice; candidates scored with the bass as a prior, inversion bonuses, extension tones only above 30 % of the top weight; Krumhansl key estimate for spelling; Viterbi smoothing with cheaper changes on bars / half bars and an extra cost for same-root changes. All constants in `ChordSettings`. |
 | Song model | `Song.{h,cpp}` | Sections, lyric blocks -> cues (a block is sung in every section with its name; Dutch and short aliases), untimed lines spread on the bar grid (bars, half, quarter), `@bar.beat.16th` starts, tap-along (`tapAt` with a cursor that follows the playhead), nudge / clear, count-in (`countdownAt`), chords with previous / current / next lookups, time signature. |
 | Text formats | `LyricImport.{h,cpp}`, `ChordChart.{h,cpp}`, `ChordMidi.{h,cpp}` | Lyrics: headers with or without brackets, repeat markers, stanza matching, `x 2`, pickups, chord-chart lines set aside, titles, `@` timings, `#` comments; export with timings; `keepTimings` (LCS) on edits. Chord chart: `[part]` blocks, `|...|` bars, `.` `-` `%` `||: :||` `x2`, label lines for kinds of parts; export / import round-trips. MIDI: 960 tpq, tempo + time signature, a text event per chord, voicing + bass; import by names, else detection. |
-| Display | `Prompter.{h,cpp}`, `PrompterPainter.{h,cpp}`, `PrompterView.{h,cpp}`, `DisplayWindow.{h,cpp}`, `Theme.h` | `buildScene` decides what's shown (four toggles, text size, count-in). Header (part, next part, bar.beat, PLAY / REC / STOP, loop pass), overview of the whole song, a 16-bar chord ticker (playhead at 25 %, part colours, current chord yellow, bass notes, lyric marks, loop), lyrics fitted one line first (ordinary lines fit a 10" iPad), count-in. Parts drawn in Live's 70-colour clip palette. Top-level window owned by the processor: F / double-click full screen, Esc, T / space tap, Backspace undo. |
+| Display | `Prompter.{h,cpp}`, `PrompterPainter.{h,cpp}`, `PrompterView.{h,cpp}`, `DisplayWindow.{h,cpp}`, `Theme.h` | `buildScene` decides what's shown (four toggles, text size, count-in). Header (part, next part, bar.beat, PLAY / REC / STOP, loop pass), overview of the whole song, a 16-bar chord ticker (playhead at 25 %, part colours, current chord yellow, bass notes, lyric marks, loop), lyrics fitted one line first (ordinary lines fit a 10" iPad), count-in. Parts drawn in Live's 70-colour clip palette. Top-level window owned by the processor: F / double-click full screen, Esc, T tap, Backspace undo (space is left to Live). |
 | Editor | `PluginEditor.{h,cpp}` | Left: Live set (link, reload, unlink, status), singer display settings, tap-along settings, transport readout. Right: Lyrics tab (text, Load / Save / Apply / Revert, line list with Tap, Undo, nudge, Clear) and Chords tab (Drag MIDI, Load / Save, Apply / Revert / Undo / Use detected, chart editor). Drops: `.als` links, `.txt` goes to the open tab, `.mid` imports chords. |
 | State | `PluginProcessor.cpp` | Saved with the Live set: the set path and last structure (with colours), chords (+ edited flag), lyrics and timings, display and tap settings, the display window's open state, placement and full screen, the editor size. |
 | Tests / tools | `tools/*.cpp`, `tools/*.py` | CTests `als-parser`, `chord-detect`, `song-logic`, `prompter-render`, `set-watcher`, `plugin-smoke`. Real-set tools: `als-check --chords / --chart`, `prompter-render --set / --midi`. `make_fixtures.py` generates the `.als` fixtures, `alsmuse_crosscheck.py` compares with ALSmuse. |
@@ -29,6 +29,21 @@ with non-trivial commits. The plan and open backlog are in [TODO.md](TODO.md).
   set, drag-out of MIDI, full screen restore), and an iPad as the display.
 
 ## Changelog
+
+- **A paragraph at a time**: *Whole paragraph* shows the lyrics per paragraph
+  (the lines between two blank lines of the text) with the line being sung
+  bright, instead of line by line. `LyricLine::paraStart` keeps where the
+  blank lines were (also in the state and in the text written back);
+  `PrompterScene::paragraph` / `paragraphLine`. Not on the phones.
+- **Space left to Live, chords per part, chords for the phones**: the editor
+  and the singer display no longer take the space bar (it is Live's play /
+  stop; **T** still taps). In the ticker every part starts with its chord,
+  also when it is the one before (`chordRuns` in `Prompter`, which the painter
+  now uses). The phone feed carries those runs for the whole song (`chords`:
+  `[start, end, name]`), so the phone page draws a ticker of its own.
+- **Muted MIDI as the last resort**: when no other track of a set has notes
+  (everything printed to audio), the chords are read from the muted MIDI
+  tracks (`SetChords::fromMuted`; the editor's status line says so).
 
 - **After v0.1.0, continued:**
   - the singer display is also shown live in the plugin window (above the

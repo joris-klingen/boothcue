@@ -10,23 +10,39 @@ SetChords chordsFromSet (const AlsResult& set, double barBeats)
     SetChords out;
     ChordInput input;
     double end = 0.0;
-    for (const auto& s : set.sections)
-        end = std::max (end, s.end);
 
-    for (const auto& t : set.midiTracks)
+    // Muted tracks are left out: what is switched off is not what the song
+    // plays. Unless nothing else in the set has notes: a muted MIDI track is
+    // then usually what an audio track was printed from, and the only place
+    // the chords can be read.
+    auto gather = [&] (bool withMuted)
     {
-        ChordTrack track;
-        track.name = t.name;
-        track.role = (t.muted || t.drums || t.index == set.trackIndex) ? TrackRole::ignore : roleFromName (t.name);
-        const auto index = static_cast<int> (input.tracks.size());
-        input.tracks.push_back (track);
-        if (track.role == TrackRole::ignore)
-            continue;
-        for (const auto& n : t.notes)
+        input = ChordInput();
+        end = 0.0;
+        for (const auto& s : set.sections)
+            end = std::max (end, s.end);
+        for (const auto& t : set.midiTracks)
         {
-            input.notes.push_back ({ n.start, n.length, n.pitch, n.velocity, index });
-            end = std::max (end, n.start + n.length);
+            ChordTrack track;
+            track.name = t.name;
+            track.role = ((t.muted && ! withMuted) || t.drums || t.index == set.trackIndex) ? TrackRole::ignore
+                                                                                              : roleFromName (t.name);
+            const auto index = static_cast<int> (input.tracks.size());
+            input.tracks.push_back (track);
+            if (track.role == TrackRole::ignore)
+                continue;
+            for (const auto& n : t.notes)
+            {
+                input.notes.push_back ({ n.start, n.length, n.pitch, n.velocity, index });
+                end = std::max (end, n.start + n.length);
+            }
         }
+    };
+    gather (false);
+    if (input.notes.empty())
+    {
+        gather (true);
+        out.fromMuted = ! input.notes.empty();
     }
     out.anyNotes = ! input.notes.empty();
     if (! out.anyNotes)

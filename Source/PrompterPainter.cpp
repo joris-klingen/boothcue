@@ -296,6 +296,30 @@ void PrompterPainter::paintLyrics (juce::Graphics& g, juce::Rectangle<float> are
     }
 
     currentLines = 0;
+    if (! s.paragraph.empty())
+    {
+        // The whole paragraph, one size for all its lines: the line being sung
+        // white, the ones sung already faint, the ones to come grey.
+        const auto n = static_cast<float> (s.paragraph.size());
+        float size = juce::jmin (8.0f * unit, area.getHeight() / (n * 1.3f));
+        float widest = 1.0f;
+        for (const auto& line : s.paragraph)
+            widest = juce::jmax (widest, juce::GlyphArrangement::getStringWidth (font (size, true), str (line)));
+        size *= juce::jmin (1.0f, (area.getWidth() - 4.0f * unit) / widest);
+        const float rowH = size * 1.3f;
+        auto rows = area.withSizeKeepingCentre (area.getWidth(), rowH * n);
+        for (std::size_t i = 0; i < s.paragraph.size(); ++i)
+        {
+            const int at = static_cast<int> (i);
+            const bool now = at == s.paragraphLine;
+            g.setColour (now ? theme::text.withAlpha (s.lineAhead ? 0.72f : 1.0f)
+                             : at < s.paragraphLine ? theme::dim.withAlpha (0.55f) : theme::dim);
+            g.setFont (font (size, now));
+            g.drawText (str (s.paragraph[i]), rows.removeFromTop (rowH), juce::Justification::centred, false);
+        }
+        currentLines = s.paragraphLine >= 0 ? 1 : 0;
+        return;
+    }
     // Three rows: the line being sung, the next one, and the one after it.
     auto top   = area.removeFromTop (area.getHeight() * 0.54f);
     auto later = area.removeFromBottom (area.getHeight() * 0.44f);
@@ -510,51 +534,24 @@ void PrompterPainter::paintTicker (juce::Graphics& g, juce::Rectangle<float> are
             }
 
     // The chords, at their changes: every name the same size, a chord that
-    // is only repeated is not written again, and a bass note is shown only
+    // is only repeated is not written again (but every part starts with its
+    // chord, also when it is the one before), and a bass note is shown only
     // where it is not the chord's root.
     if (settings.showChords && s.hasChords)
     {
         struct Run { double start, end; juce::String name, bass; bool now, past; };
         std::vector<Run> runs;
-        const auto key = song.key();
-        const auto& chords = song.chords();
-        const int current = s.hasPosition ? song.chordAt (s.ppq) : -1;
         bool anyBass = false;
-        std::size_t hash = chords.size();
-        for (std::size_t i = 0; i < chords.size(); ++i)
+        std::size_t hash = song.chords().size();
+        const bool sounding = s.hasPosition && song.chordAt (s.ppq) >= 0;
+        for (const auto& r : chordRuns (song, settings.showBassNote))
         {
-            const auto& c = chords[i];
-            auto chord = c.chord;
-            juce::String bass;
-            if (settings.showBassNote)
-            {
-                if (chord.bass >= 0 && chord.bass != chord.root)
-                {
-                    Chord bassOnly;
-                    bassOnly.root = chord.bass;
-                    bassOnly.quality = Quality::major;
-                    bass = str (chordName (bassOnly, key));   // a plain note name
-                    anyBass = true;
-                }
-                chord.bass = chord.root;
-            }
-            const auto name = str (chordName (chord, key)) + (c.confidence < 0.15 ? "?" : "");
-            const bool now = static_cast<int> (i) == current;
-            if (! runs.empty() && runs.back().name == name && runs.back().bass == bass
-                && std::abs (c.start - runs.back().end) < 1.0e-6)
-            {
-                runs.back().end = c.end;
-                runs.back().now = runs.back().now || now;
-            }
-            else
-            {
-                runs.push_back ({ c.start, c.end, name, bass, now, false });
-                hash = hash * 31u + static_cast<std::size_t> (name.hashCode64())
-                       + static_cast<std::size_t> (c.start * 96.0);
-            }
+            runs.push_back ({ r.start, r.end, str (r.name), str (r.bass),
+                              sounding && s.ppq >= r.start && s.ppq < r.end, s.hasPosition && r.end <= s.ppq });
+            anyBass = anyBass || ! r.bass.empty();
+            hash = hash * 31u + static_cast<std::size_t> (runs.back().name.hashCode64())
+                   + static_cast<std::size_t> (r.start * 96.0);
         }
-        for (auto& r : runs)
-            r.past = s.hasPosition && r.end <= s.ppq;
 
         auto row = body.withTrimmedBottom (dotsH).reduced (0.0f, 0.3f * unit);
         const float bassH = anyBass ? row.getHeight() * 0.30f : 0.0f;

@@ -4,6 +4,7 @@
 #include "Transport.h"
 
 #include <string>
+#include <vector>
 
 namespace boothcue
 {
@@ -26,6 +27,9 @@ struct DisplaySettings
     // line before it started; entries that get a count-in are announced by
     // the count instead.
     double leadBars = 1.0;
+    // The lyrics a paragraph at a time (the lines between two blank lines of
+    // the text) instead of line by line: enough on a large second screen.
+    bool paragraph = false;
     CountSettings count;
 };
 
@@ -56,6 +60,10 @@ struct PrompterScene
     int  currentCue = -1, nextCue = -1;
     std::string currentLine, nextLine;
     std::string laterLine;         // the line after nextLine: one more row to read ahead
+    // With DisplaySettings::paragraph: the paragraph of the line being sung
+    // (in a rest: of the next line) and which of its lines that is (-1 in a rest).
+    std::vector<std::string> paragraph;
+    int paragraphLine = -1;
     double beatsToNextLine = 0.0;
     Countdown countdown;
     // lineAhead: currentLine is shown ahead of its start (DisplaySettings::
@@ -77,6 +85,18 @@ struct PrompterScene
 };
 
 PrompterScene buildScene (const Song&, const TransportState&, const DisplaySettings&);
+
+// The chords as a ticker writes them, for the whole song: a chord that is only
+// repeated is one run, but every part starts a run of its own, so each part
+// shows its first chord also when it is the one before. `name` is spelled in
+// the song's key (with "?" when the detector was unsure). With bassApart the
+// name leaves the bass note out and `bass` holds it where it isn't the root.
+struct ChordRun
+{
+    double start = 0.0, end = 0.0;
+    std::string name, bass;
+};
+std::vector<ChordRun> chordRuns (const Song&, bool bassApart);
 
 // "3 bars", "1 bar", "2 beats", "1 beat": rounded UP, so the last bar before a
 // change reads "1 bar" until its beats are counted.

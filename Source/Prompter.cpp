@@ -142,8 +142,72 @@ PrompterScene buildScene (const Song& song, const TransportState& t, const Displ
         }
         if (s.nextCue >= 0 && static_cast<std::size_t> (s.nextCue) + 1 < song.cues().size())
             s.laterLine = lineText (song, s.nextCue + 1);
+
+        // The paragraph around the line: back to the first line after a blank
+        // line (or the start of the part), on to the next such line.
+        const int shown = s.currentCue >= 0 ? s.currentCue : s.nextCue;
+        if (settings.paragraph && shown >= 0)
+        {
+            const auto& cues = song.cues();
+            auto starts = [&] (int c)
+            {
+                if (c <= 0 || c >= static_cast<int> (cues.size()))
+                    return true;
+                const auto& a = cues[static_cast<std::size_t> (c - 1)];
+                const auto& b = cues[static_cast<std::size_t> (c)];
+                return a.section != b.section || a.block != b.block
+                       || song.blocks()[static_cast<std::size_t> (b.block)].lines[static_cast<std::size_t> (b.line)].paraStart;
+            };
+            int first = shown, end = shown + 1;
+            while (! starts (first))
+                --first;
+            while (! starts (end))
+                ++end;
+            for (int c = first; c < end; ++c)
+                s.paragraph.push_back (lineText (song, c));
+            s.paragraphLine = s.currentCue >= 0 ? shown - first : -1;
+        }
     }
     return s;
+}
+
+std::vector<ChordRun> chordRuns (const Song& song, bool bassApart)
+{
+    std::vector<ChordRun> runs;
+    const auto key = song.key();
+    for (const auto& c : song.chords())
+    {
+        auto chord = c.chord;
+        std::string bass;
+        if (bassApart)
+        {
+            if (chord.bass >= 0 && chord.bass != chord.root)
+            {
+                Chord bassOnly;
+                bassOnly.root = chord.bass;
+                bassOnly.quality = Quality::major;
+                bass = chordName (bassOnly, key);   // a plain note name
+            }
+            chord.bass = chord.root;
+        }
+        const auto name = chordName (chord, key) + (c.confidence < 0.15 ? "?" : "");
+        if (! runs.empty() && runs.back().name == name && runs.back().bass == bass
+            && std::abs (c.start - runs.back().end) < 1.0e-6)
+            runs.back().end = c.end;
+        else
+            runs.push_back ({ c.start, c.end, name, bass });
+    }
+    // A chord that sounds on into the next part is written again there.
+    for (const auto& sec : song.sections())
+        for (std::size_t i = 0; i < runs.size(); ++i)
+            if (sec.start > runs[i].start + 1.0e-6 && sec.start < runs[i].end - 1.0e-6)
+            {
+                auto rest = runs[i];
+                rest.start = runs[i].end = sec.start;
+                runs.insert (runs.begin() + static_cast<std::ptrdiff_t> (i) + 1, rest);
+                break;
+            }
+    return runs;
 }
 
 }  // namespace boothcue
