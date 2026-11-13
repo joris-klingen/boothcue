@@ -134,6 +134,9 @@ The Chords tab shows the chords as a chart, one block per part:
 | Eb7 | Eb7 Dbadd9 | Bbm | Bbm |
 ```
 
+A block counts for every part of its name that has no block of its own, and
+its bars go round for as long as the part lasts: `[verse]` once is enough for
+all verses, and `[verse 3]` writes the third verse where it differs.
 One `|...|` per bar; chords in a bar share it evenly, `.` gives the chord
 before it one more beat, `-` is no chord, an empty bar means the chord goes
 on, `%` repeats the bar, `||: ... :||` and `x2` repeat. A line like
@@ -151,6 +154,13 @@ chord names in the clip). Clicking it saves the `.mid` instead. Dropping a
 has them, else detected from its notes.
 
 ### The song folder (the band's songbook)
+
+With a song linked, the songbook is where its lyrics and chords are edited:
+the Lyrics and Chords boxes here only show them, and *Edit in songbook* opens
+the song's page there (BoothCue follows what is saved within a second or two).
+A song without chords in the songbook shows the chords detected from the set;
+in the songbook, *From the Live set* takes those over to edit. Tapping the
+starts of the lines stays here.
 
 Choosing a song from the *Song* menu (or *Other song folder...*, or dropping a
 folder on the plugin window) links the song's

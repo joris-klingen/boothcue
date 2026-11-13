@@ -30,6 +30,15 @@ with non-trivial commits. The plan and open backlog are in [TODO.md](TODO.md).
 
 ## Changelog
 
+- **The songbook is where a linked song is edited** (after v0.1.0): with a
+  song folder linked the Lyrics and Chords boxes are read-only and *Edit in
+  songbook* opens the song's page in bovenburen_manager. A chart is read as
+  the songbook writes it: `[verse]` once counts for every verse without a
+  block of its own, `[verse 3]` is the third verse (also when the set's parts
+  are not numbered, and `[verse]` goes to parts named `verse 1`, `verse 2`),
+  and a block's bars go round for as long as its part lasts (before: played
+  once). Checked in `song-check` and on a real set's chart; not tried in Live.
+
 - **`boothcue-chart`** (after v0.1.0): a set's parts and detected chords as JSON
   (`tools/ChartTool.cpp`, core only), copied into `BoothCue.app/Contents/Resources`.
   The songbook (bovenburen_manager) runs it for "chords from the Live set", so

@@ -170,6 +170,12 @@ private:
     // ---- right: tabs ----
     juce::TextButton lyricsTab { "Lyrics" }, chordsTab { "Chords" };
     bool showingChords = false;
+    // With a song of the songbook linked, the songbook is where its lyrics and
+    // chords are edited: the two boxes only show them (they follow the
+    // songbook's files), and this button opens the song's page there.
+    juce::TextButton bookButton { "Edit in songbook" };
+    bool followingBook = false;
+    void updateBookMode();
     juce::Rectangle<int> tabRow, noteRow;
 
     // ---- right: chords ----

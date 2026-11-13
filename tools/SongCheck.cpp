@@ -1018,8 +1018,24 @@ namespace
         r = chartToChords ("[verse]\n| Am | | % | Dm E(7b13) |\n", parts, sig);
         EXPECT (chordAtName (r.chords, 16.5) == "Am" && chordAtName (r.chords, 20.5) == "Am");   // empty bar: goes on
         EXPECT (chordAtName (r.chords, 24.5) == "Am" && chordAtName (r.chords, 28.5) == "Dm" && chordAtName (r.chords, 30.5) == "E7");
-        EXPECT (chordAtName (r.chords, 33) == "-");   // a [block] is played once, not looped
-        EXPECT (r.chords.size() == 3);   // Am merged across the bars
+        EXPECT (chordAtName (r.chords, 33) == "Am" && chordAtName (r.chords, 45) == "Dm");   // the bars go round while the part lasts
+        EXPECT (chordAtName (r.chords, 65) == "Am" && chordAtName (r.chords, 94.5) == "E7");  // written once: the second verse too
+        EXPECT (r.partsFilled == 2 && chordAtName (r.chords, 49) == "-");                     // not the chorus
+
+        // "[verse 3]" is the third verse where it differs; the others take "[verse]". Numbered
+        // parts ("verse 1") take an unnumbered block in turn.
+        {
+            const std::vector<Section> three { sec ("verse", 0, 16), sec ("pre", 16, 32), sec ("verse", 32, 48), sec ("verse", 48, 64) };
+            auto v = chartToChords ("[verse]\n| C |\n[pre]\n| F |\n[verse 3]\n| G |\n", three, sig);
+            EXPECT (v.unmatched.empty() && v.partsFilled == 4);
+            EXPECT (chordAtName (v.chords, 1) == "C" && chordAtName (v.chords, 17) == "F" && chordAtName (v.chords, 33) == "C"
+                    && chordAtName (v.chords, 49) == "G");
+            const std::vector<Section> numbered { sec ("Verse 1", 0, 16), sec ("Chorus", 16, 32), sec ("Verse 2", 32, 48) };
+            v = chartToChords ("[verse]\n| C |\n[chorus]\n| F |\n", numbered, sig);
+            EXPECT (v.unmatched.empty() && v.partsFilled == 3 && chordAtName (v.chords, 1) == "C" && chordAtName (v.chords, 33) == "C");
+            v = chartToChords ("[verse]\n| C |\n[verse 2]\n| G |\n", numbered, sig);
+            EXPECT (chordAtName (v.chords, 1) == "C" && chordAtName (v.chords, 33) == "G");
+        }
 
         // [blocks] in song order: the 2nd [verse] goes to the 2nd verse.
         r = chartToChords ("[verse]\n| C |\n[verse]\n| G |\n[bridge]\n| F |\n", parts, sig);
@@ -1037,11 +1053,11 @@ namespace
         EXPECT (chordAtName (r.chords, 49) == "Am" && chordAtName (r.chords, 97) == "Am");   // and the choruses
         // A [block] wins over a label for its part.
         r = chartToChords ("Chorus: | Am |\n[chorus]\n| C |\n", parts, sig);
-        EXPECT (chordAtName (r.chords, 49) == "C" && chordAtName (r.chords, 97) == "Am");
+        EXPECT (chordAtName (r.chords, 49) == "C" && chordAtName (r.chords, 97) == "C");   // for every chorus
         // "x2", unknown tokens reported.
         r = chartToChords ("[verse]\n| C | G | x2\n| Hmm |\n", parts, sig);
         EXPECT (chordAtName (r.chords, 17) == "C" && chordAtName (r.chords, 25) == "C" && chordAtName (r.chords, 29) == "G");
-        EXPECT (chordAtName (r.chords, 33) == "G" && chordAtName (r.chords, 37) == "-");   // the unknown bar: G goes on, then the block ends
+        EXPECT (chordAtName (r.chords, 33) == "G" && chordAtName (r.chords, 37) == "C");   // the unknown bar: G goes on, then round again
         EXPECT (r.unknown.size() == 1 && r.unknown[0] == "Hmm");
 
         // Export -> import gives the same chords (on beat resolution).

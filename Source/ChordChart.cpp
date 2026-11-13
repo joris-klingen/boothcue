@@ -234,8 +234,8 @@ namespace
             }
             t += barLen;
         }
-        // The part's chords end with the part, or after the last bar written
-        // (a [block] shorter than its part: no chords after it).
+        // The part's chords end with the part (or after the last bar written,
+        // when the bars are not repeated).
         changes.push_back ({ std::min (t, end), 0, Chord() });
     }
 
@@ -316,14 +316,38 @@ ChartImport chartToChords (const std::string& chart, const std::vector<Section>&
         blocks.back().lines.push_back (t);
     }
 
-    // Pass 2: [blocks] go to parts in song order; labels fill the rest by kind.
-    std::vector<Change> changes;
-    std::size_t cursor = 0;
-    for (const auto& b : blocks)
+    // Pass 2: [blocks] go to parts in song order; then a part without a block
+    // takes the one written for its name; labels fill the rest by kind.
+    //
+    // A chart is written as a person writes one (and as the songbook shows
+    // it): "[verse]" once counts for every verse, "[verse 3]" is the third
+    // verse where it differs, and the bars of a block go round for as long as
+    // its part lasts.
+    auto base = [] (const std::string& name)        // "verse3" -> "verse"
     {
+        auto key = nameKey (name);
+        while (! key.empty() && std::isdigit (static_cast<unsigned char> (key.back())))
+            key.pop_back();
+        return key;
+    };
+    auto number = [] (const std::string& name)      // "verse 3" -> 3, "verse" -> 0
+    {
+        const auto key = nameKey (name);
+        std::size_t i = key.size();
+        while (i > 0 && std::isdigit (static_cast<unsigned char> (key[i - 1])))
+            --i;
+        return i < key.size() && key.size() - i <= 3 ? std::stoi (key.substr (i)) : 0;
+    };
+
+    std::vector<Change> changes;
+    std::vector<std::vector<Bar>> blockBars (blocks.size());
+    std::size_t cursor = 0;
+    for (std::size_t n = 0; n < blocks.size(); ++n)
+    {
+        const auto& b = blocks[n];
         if (b.label)
             continue;
-        const auto bars = parseLines (b.lines, result.unknown);
+        blockBars[n] = parseLines (b.lines, result.unknown);
         int target = -1;
         for (std::size_t i = cursor; i < sections.size() && target < 0; ++i)
             if (! assigned[i] && nameKey (sections[i].name) == nameKey (b.name))
@@ -331,6 +355,22 @@ ChartImport chartToChords (const std::string& chart, const std::vector<Section>&
         for (std::size_t i = 0; i < sections.size() && target < 0; ++i)
             if (! assigned[i] && nameKey (sections[i].name) == nameKey (b.name))
                 target = static_cast<int> (i);
+        if (target < 0 && ! base (b.name).empty())
+        {
+            // No part of exactly that name. "[verse 3]": the third part named
+            // "verse"; "[verse]": the next of the parts "verse 1", "verse 2", ...
+            const int wanted = number (b.name);
+            int seen = 0;
+            for (std::size_t i = 0; i < sections.size() && target < 0; ++i)
+            {
+                if (base (sections[i].name) != base (b.name))
+                    continue;
+                ++seen;
+                if (! assigned[i] && (wanted > 0 ? (seen == wanted && number (sections[i].name) == 0)
+                                                 : (i >= cursor && number (sections[i].name) > 0)))
+                    target = static_cast<int> (i);
+            }
+        }
         if (target < 0)
         {
             result.unmatched.push_back ("[" + b.name + "]");
@@ -339,8 +379,28 @@ ChartImport chartToChords (const std::string& chart, const std::vector<Section>&
         const auto& sec = sections[static_cast<std::size_t> (target)];
         assigned[static_cast<std::size_t> (target)] = true;
         cursor = static_cast<std::size_t> (target) + 1;
-        place (bars, sec.start, sec.end, false, sig, changes);
+        place (blockBars[n], sec.start, sec.end, true, sig, changes);
         ++result.partsFilled;
+    }
+    // A part still without chords: the first block written for its name
+    // ("[verse]" for the second verse too, also when the parts are numbered).
+    for (std::size_t i = 0; i < sections.size(); ++i)
+    {
+        if (assigned[i])
+            continue;
+        for (std::size_t n = 0; n < blocks.size(); ++n)
+        {
+            const auto& b = blocks[n];
+            if (b.label || blockBars[n].empty())
+                continue;
+            if (nameKey (b.name) != nameKey (sections[i].name)
+                && ! (number (b.name) == 0 && ! base (b.name).empty() && base (b.name) == base (sections[i].name)))
+                continue;
+            assigned[i] = true;
+            place (blockBars[n], sections[i].start, sections[i].end, true, sig, changes);
+            ++result.partsFilled;
+            break;
+        }
     }
     for (const auto& b : blocks)
     {

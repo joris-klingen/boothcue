@@ -14,8 +14,11 @@ namespace boothcue
 //
 //     # comments
 //     [verse]                          a part, in song order: the next part of
-//     | Bbm | Eb/Bb Bbm | Ab | Ab |     that name gets these bars, from its start
-//     | Eb . . Db | - | % | Bbm |
+//     | Bbm | Eb/Bb Bbm | Ab | Ab |     that name gets these bars, going round for
+//     | Eb . . Db | - | % | Bbm |       as long as the part lasts. Written once,
+//                                      it counts for every later part of that
+//     [verse 3]                        name without a block of its own; a number
+//     | Bbm | Gb | Ab | Ab |           names the one that differs (the third verse)
 //
 //     Verse/Chorus: ||: Am | | | Dm E(7b13) :||
 //                                      a progression per kind of part: repeated

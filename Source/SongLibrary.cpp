@@ -145,8 +145,20 @@ int SongLibrary::songForSet (const std::vector<LibrarySong>& songs, const juce::
     const auto folder = set.getParentDirectory();
     const auto path = forward (folder);
     for (std::size_t i = 0; i < songs.size(); ++i)
-        if (songs[i].project.isNotEmpty() && (path + "/").endsWithIgnoreCase ("/" + songs[i].project + "/"))
+    {
+        const auto& project = songs[i].project;
+        if (project.isEmpty())
+            continue;
+        if (juce::File::isAbsolutePath (project))
+        {
+            // A full path: the one set the song names, or its project folder.
+            const juce::File named (project);
+            if (project.endsWithIgnoreCase (".als") ? named == set : named == folder)
+                return static_cast<int> (i);
+        }
+        else if ((path + "/").endsWithIgnoreCase ("/" + project + "/"))
             return static_cast<int> (i);
+    }
     const auto name = slug (projectName (folder));
     if (name.isNotEmpty())
         for (std::size_t i = 0; i < songs.size(); ++i)
@@ -157,6 +169,19 @@ int SongLibrary::songForSet (const std::vector<LibrarySong>& songs, const juce::
 
 juce::File SongLibrary::setForSong (const LibrarySong& song) const
 {
+    // song.json names one set by its full path: that one, whatever is newer.
+    if (juce::File::isAbsolutePath (song.project) && song.project.endsWithIgnoreCase (".als"))
+        return juce::File (song.project).existsAsFile() ? juce::File (song.project) : juce::File();
+
+    if (juce::File::isAbsolutePath (song.project))   // a project folder by its full path: its newest set
+    {
+        juce::File newest;
+        for (const auto& entry : juce::RangedDirectoryIterator (juce::File (song.project), false, "*.als", juce::File::findFiles))
+            if (newest == juce::File() || entry.getFile().getLastModificationTime() > newest.getLastModificationTime())
+                newest = entry.getFile();
+        return newest;
+    }
+
     const auto root = projectsRoot();
     if (root == juce::File())
         return {};
@@ -193,7 +218,7 @@ void SongLibrary::learn (const juce::File& set, const juce::File& songFolder)
     // The set's folder ends with the song's project path: what is in front of
     // it is the projects folder.
     const auto song = songIn (songFolder);
-    if (set != juce::File() && song.project.isNotEmpty())
+    if (set != juce::File() && song.project.isNotEmpty() && ! juce::File::isAbsolutePath (song.project))
     {
         const auto path = forward (set.getParentDirectory());
         if ((path + "/").endsWithIgnoreCase ("/" + song.project + "/"))

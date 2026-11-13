@@ -13,7 +13,8 @@ struct LibrarySong
 {
     juce::String id;        // the folder's name
     juce::String title;     // from song.json (the id when it has none)
-    juce::String project;   // its Live project, relative to the projects folder ("" = not set)
+    juce::String project;   // its Live project: a folder from the projects folder, or the full path
+                            // of a folder (the newest set in it) or of one .als ("" = not set)
     juce::File folder;
 };
 

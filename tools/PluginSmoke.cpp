@@ -307,6 +307,12 @@ namespace
                 EXPECT (lib.setForSong (songs[1]) == newest);
                 EXPECT (lib.setForSong (songs[0]) == dagenSet);
             }
+            // song.json may also name a folder or one set by its full path.
+            LibrarySong byFolder { "x", "X", dagenProject.getFullPathName(), dagen };
+            LibrarySong bySet { "y", "Y", old.getFullPathName(), papa };
+            EXPECT (lib.setForSong (byFolder) == dagenSet && lib.setForSong (bySet) == old);   // the one named, not the newest
+            EXPECT (SongLibrary::songForSet ({ byFolder, bySet }, dagenSet) == 0 && SongLibrary::songForSet ({ byFolder, bySet }, old) == 1);
+            EXPECT (SongLibrary::songForSet ({ bySet }, newest) == -1);
             lib.remember (old, papa);
             lib.remember (dagenSet, dagen);
             lib.remember (newest, papa);       // the same song again: one entry, on top
@@ -566,7 +572,7 @@ namespace
             const int i = proc.getSong().chordAt (t);
             return i < 0 ? std::string ("-") : chordName (proc.getSong().chords()[static_cast<std::size_t> (i)].chord, proc.getSong().key());
         };
-        EXPECT (nameAt (p, 1) == "G" && nameAt (p, 9) == "D/F#" && nameAt (p, 17) == "C" && nameAt (p, 21) == "-");
+        EXPECT (nameAt (p, 1) == "G" && nameAt (p, 9) == "D/F#" && nameAt (p, 17) == "C" && nameAt (p, 21) == "C");
         // A save in Live: detected again, kept aside.
         const auto set = fixtures.getChildFile ("notes.als");
         const auto copy = juce::File::createTempFile (".als");
@@ -781,7 +787,7 @@ namespace
     }
 
     // With BOOTHCUE_EDITOR_PNG set: a snapshot of the editor with a linked set,
-    // for reviewing the layout without a host. BOOTHCUE_EDITOR_SET (a .als),
+    // for reviewing the layout without a host. BOOTHCUE_EDITOR_SONG (a song folder), BOOTHCUE_EDITOR_SET (a .als),
     // BOOTHCUE_EDITOR_LYRICS (a .txt) and BOOTHCUE_EDITOR_BEAT take a real set
     // instead of the fixture (the screenshots in docs/).
     void editorSnapshot (const juce::File& fixtures)
@@ -810,6 +816,9 @@ namespace
 
         // A position in the first chorus, so its line shows as being sung.
         FakePlayHead head;
+        // BOOTHCUE_EDITOR_SONG: a song folder of the songbook, linked on top (the boxes then show its text).
+        if (const juce::File song (juce::SystemStats::getEnvironmentVariable ("BOOTHCUE_EDITOR_SONG", {})); song.isDirectory())
+            p.linkSongFolder (song);
         head.info.setPpqPosition (juce::SystemStats::getEnvironmentVariable ("BOOTHCUE_EDITOR_BEAT", "60").getDoubleValue());
         head.info.setBpm (96.0);
         head.info.setIsPlaying (true);

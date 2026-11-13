@@ -1,5 +1,7 @@
 #include "PluginEditor.h"
 
+#include "LiveFeed.h"
+
 #include "ChordChart.h"
 #include "ChordMidi.h"
 #include "LyricImport.h"
@@ -297,6 +299,16 @@ BoothCueAudioProcessorEditor::BoothCueAudioProcessorEditor (BoothCueAudioProcess
                                          theme::dim);
     chordsEditor.onTextChange = [this] { updateChordButtons(); };
     addChildComponent (chordsEditor);
+    bookButton.onClick = [this]
+    {
+        // The song's page in the songbook (bovenburen_manager on this Mac), in its editor.
+        juce::URL ("http://localhost:" + juce::String (LiveFeed::managerPort) + "/#"
+                   + juce::URL::addEscapeChars (processor.getSongFolder().getFileName(), true) + ".edit")
+            .launchInDefaultBrowser();
+    };
+    bookButton.setTooltip ("Open this song in the songbook to edit its lyrics and chords (Bovenburen Manager has to be "
+                           "running). BoothCue follows what is saved there within a second or two.");
+    addChildComponent (bookButton);
     chordLoad.onClick = [this] { loadChordsFile(); };
     chordSave.onClick = [this] { saveTextFile ("Save the chords as a chart", " - chords.txt", chordsEditor.getText()); };
     chordApply.onClick = [this] { applyChords(); };
@@ -683,8 +695,23 @@ void BoothCueAudioProcessorEditor::showTab (bool chords)
     for (juce::Component* c : std::initializer_list<juce::Component*> { &chordsEditor, &chordLoad, &chordSave, &chordApply,
                                                                         &chordRevert, &chordUndo, &chordDetected, &chordMidi })
         c->setVisible (chords);
+    updateBookMode();
     resized();
     repaint();
+}
+
+// A linked song of the songbook: its text is shown, not edited here (the
+// songbook's files are the master and would overwrite an edit a second later).
+void BoothCueAudioProcessorEditor::updateBookMode()
+{
+    followingBook = processor.getSongFolder() != juce::File();
+    lyricsEditor.setReadOnly (followingBook);
+    chordsEditor.setReadOnly (followingBook);
+    for (auto* b : { &loadButton, &applyButton, &revertButton })
+        b->setVisible (! showingChords && ! followingBook);
+    for (auto* b : { &chordLoad, &chordApply, &chordRevert, &chordUndo, &chordDetected })
+        b->setVisible (showingChords && ! followingBook);
+    bookButton.setVisible (followingBook);
 }
 
 void BoothCueAudioProcessorEditor::saveTextFile (const juce::String& title, const juce::String& suffix, const juce::String& text)
@@ -844,6 +871,8 @@ void BoothCueAudioProcessorEditor::filesDropped (const juce::StringArray& files,
             processor.linkSet (file);
         else if (file.hasFileExtension ("txt;text;md"))
         {
+            if (followingBook)
+                continue;   // the songbook's text is in use: a text is added there
             if (showingChords)
             {
                 chordsEditor.setText (file.loadFileAsString(), false);
@@ -1049,29 +1078,39 @@ void BoothCueAudioProcessorEditor::resized()
         chordsTab.setBounds (row.removeFromLeft (84).reduced (0, 1));
         chordsTab.setConnectedEdges (juce::Button::ConnectedOnLeft);
         auto place = [&row] (juce::Button& b, int w) { b.setBounds (row.removeFromRight (w).reduced (0, 1)); row.removeFromRight (6); };
+        if (followingBook)
+            place (bookButton, 130);
         if (showingChords)
         {
             place (chordSave, 70);
-            place (chordLoad, 70);
+            if (! followingBook)
+                place (chordLoad, 70);
             chordMidi.setBounds (row.removeFromRight (juce::jmin (110, juce::jmax (0, row.getWidth()))).reduced (0, 1));
         }
         else
         {
-            place (revertButton, 70);
-            place (applyButton, 64);
+            if (! followingBook)
+            {
+                place (revertButton, 70);
+                place (applyButton, 64);
+            }
             place (saveLyricsButton, 70);
-            place (loadButton, 70);
+            if (! followingBook)
+                place (loadButton, 70);
         }
     }
     if (showingChords)
     {
-        // A second row: what to do with the chart.
-        area.removeFromTop (6);
-        auto row = area.removeFromTop (28);
-        for (auto* b : { &chordApply, &chordRevert, &chordUndo, &chordDetected })
+        // A second row: what to do with the chart (not for a song of the songbook).
+        if (! followingBook)
         {
-            b->setBounds (row.removeFromLeft (b == &chordDetected ? 110 : 70).reduced (0, 1));
-            row.removeFromLeft (6);
+            area.removeFromTop (6);
+            auto row = area.removeFromTop (28);
+            for (auto* b : { &chordApply, &chordRevert, &chordUndo, &chordDetected })
+            {
+                b->setBounds (row.removeFromLeft (b == &chordDetected ? 110 : 70).reduced (0, 1));
+                row.removeFromLeft (6);
+            }
         }
         noteRow = area.removeFromTop (40).withTrimmedTop (4);
         chordsEditor.setBounds (area);
@@ -1125,6 +1164,8 @@ void BoothCueAudioProcessorEditor::timerCallback()
         repaint (linkArea);
         repaint (songArea);
         updateSongMenuButton();
+        if (followingBook != (processor.getSongFolder() != juce::File()))
+            showTab (showingChords);
         repaint (linesTitle);
     }
 
@@ -1185,7 +1226,12 @@ void BoothCueAudioProcessorEditor::paint (juce::Graphics& g)
         {
             juce::String source;
             auto colour = theme::dim;
-            if (processor.areChordsEdited())
+            if (followingBook)
+                source = processor.areChordsEdited()
+                             ? "From the songbook, laid over the parts of the set. Edit the chords there; BoothCue follows."
+                             : "No chords in the songbook for \"" + processor.getSongTitle() + "\" yet: these are detected from the set. "
+                               "In the songbook, \"From the Live set\" takes them over to edit.";
+            else if (processor.areChordsEdited())
                 source = "Your chart is in use (saved with the set). Detection after a save is kept aside"
                          + juce::String (processor.hasDetectedChords() ? ": \"Use detected\" switches back." : ".");
             else if (! processor.getSong().chords().empty())
@@ -1204,6 +1250,12 @@ void BoothCueAudioProcessorEditor::paint (juce::Graphics& g)
             }
             g.setColour (colour);
             g.drawFittedText (source, t, juce::Justification::topLeft, 2, 0.9f);
+        }
+        else if (followingBook)
+        {
+            g.setColour (theme::dim);
+            g.drawFittedText ("From the songbook. Edit the text there; tap the starts here.",
+                              t, juce::Justification::centredLeft, 1, 0.85f);
         }
         else if (lyricsEditor.getText() != appliedText)
         {
